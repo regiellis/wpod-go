@@ -1,0 +1,19 @@
+# Caddyfile for {{.InstanceName}}
+# This Caddyfile is intended to be run as a service within this instance's Docker Compose setup,
+# or used as a reference for configuring a host-level Caddy.
+
+{{.DevHostName}} {
+    # Reverse proxy to Traefik (which will handle WordPress and other services)
+    reverse_proxy 0.0.0.0:{{.CaddyHTTPPort}} {
+        header_up Host {http.request.host}
+        header_up X-Real-IP {http.request.remote.host}
+        header_up X-Forwarded-For {http.request.remote.host}
+        header_up X-Forwarded-Proto {http.request.scheme}
+    }
+    # tls internal # Uncomment if using Caddy's internal CA
+}
+
+# Optional: phpMyAdmin / Adminer if you add it as a service in this instance's docker-compose
+adminer.{{.InstanceNameBase}}.{{.DevDomainSuffix}} { # Example hostname
+    reverse_proxy adminer:8080 # Assuming adminer service runs on 8080
+}

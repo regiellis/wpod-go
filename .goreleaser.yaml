@@ -1,0 +1,76 @@
+# .goreleaser.yaml for WPID/WordPress in Docker
+# Builds and releases 'wpid' (main CLI) and 'manage' (instance tool) for multiple platforms
+
+project_name: wpid
+
+dist: dist
+
+dockers: []
+
+builds:
+  - id: wpid
+    main: ./cmd/wp-manager
+    binary: wpid
+    goos:
+      - linux
+      - windows
+      - darwin
+    goarch:
+      - amd64
+    ldflags:
+      - -s -w
+    env:
+      - CGO_ENABLED=0
+    # Output: dist/wpid-{{ .Os }}-{{ .Arch }}{{ if eq .Os "windows" }}.exe{{ end }}
+    # Custom output name for each platform
+    hooks:
+      post: |
+        echo "Built wpid for $GOOS-$GOARCH"
+
+  - id: manage
+    main: ./cmd/manage
+    binary: manage
+    goos:
+      - linux
+      - windows
+      - darwin
+    goarch:
+      - amd64
+    ldflags:
+      - -s -w
+    env:
+      - CGO_ENABLED=0
+    hooks:
+      post: |
+        echo "Built manage for $GOOS-$GOARCH"
+archives:
+  - id: wpid-archive
+    builds: [wpid, manage]
+    format: tar.gz
+    name_template: "wpid-{{ .Version }}-{{ .Os }}-{{ .Arch }}"
+    files:
+      - LICENSE
+      - README.md
+      - dist/wp* # include all wpid binaries
+      - dist/manage* # include all manage binaries
+      - setup*
+      - Taskfile.yml
+
+checksum:
+  name_template: "checksums.txt"
+
+changelog:
+  sort: desc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+
+release:
+  github:
+    owner: ${{ github.repository_owner }}
+    name: ${{ github.event.repository.name }}
+
+signs: []
+
+# Optionally, add brew, scoop, or docker sections if needed

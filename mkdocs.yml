@@ -1,0 +1,52 @@
+site_name: WPID Documentation
+repo_url: https://github.com/regiellis/wpid-go
+repo_name: WPID
+nav:
+  - Home: index.md
+  - Getting Started: getting-started.md
+  - Usage: usage.md
+  - CLI Reference: cli.md
+  - Instance Management: instances.md
+  - Caddy & Reverse Proxy: caddy.md
+  - Advanced: advanced.md
+  - FAQ: faq.md
+  - Changelog: ../CHANGELOG.md
+  - License: ../LICENSE
+# Theme and plugins
+theme:
+  name: material
+  logo: assets/logo.png
+  favicon: assets/favicon.ico
+  palette:
+    - scheme: default
+      primary: blue
+      accent: light blue
+    - scheme: slate
+      primary: blue
+      accent: light blue
+plugins:
+  - search
+  - git-revision-date
+  - awesome-pages
+markdown_extensions:
+  - admonition
+  - codehilite
+  - toc:
+      permalink: true
+  - footnotes
+  - tables
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.tabbed
+  - pymdownx.emoji
+  - pymdownx.tasklist
+  - pymdownx.highlight
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.keys
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/regiellis/wpid-go
+  generator: false
+

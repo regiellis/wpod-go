@@ -1,0 +1,12 @@
+{
+  "name": "Default WordPress",
+  "description": "A standard WordPress setup with no extra plugins.",
+  "folders": [
+    "wordpress",
+    "wp-content",
+    "db",
+    "config"
+  ],
+  "plugins": [],
+  "themes": []
+}

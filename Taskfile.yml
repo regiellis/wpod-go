@@ -1,0 +1,157 @@
+version: '3'
+
+tasks:
+  all:
+    desc: Build 'WPID' for Linux, Windows, and macOS (amd64)
+    deps: [build-all-wpid]
+
+  build-all-wpid:
+    desc: Build 'WPID' for all three platforms
+    deps: [wpid-linux, wpid-windows, wpid-darwin]
+    cmds:
+      - echo "All 'WPID' builds complete. Binaries are in ./dist/"
+
+  build-current:
+    desc: Build 'manage' and 'wpid' for the current system's OS/ARCH
+    cmds:
+      - |
+        CURRENT_OS=$(go env GOOS)
+        CURRENT_ARCH=$(go env GOARCH)
+        echo "Building 'manage' for current system ($CURRENT_OS-$CURRENT_ARCH)..."
+        CGO_ENABLED=0 GOOS=$CURRENT_OS GOARCH=$CURRENT_ARCH go build -ldflags="-s -w" -o ./cmd/wp-manager/templates/docker-default-wordpress/manage$(if [ "$CURRENT_OS" = "windows" ]; then echo .exe; fi) ./cmd/manage
+        echo "Building 'wpid' for current system ($CURRENT_OS-$CURRENT_ARCH)..."
+        CGO_ENABLED=0 GOOS=$CURRENT_OS GOARCH=$CURRENT_ARCH go build -ldflags="-s -w" -o ./dist/wpid$(if [ "$CURRENT_OS" = "windows" ]; then echo .exe; fi) ./cmd/wp-manager
+        echo "Built for current system: ./dist/wpid$(if [ "$CURRENT_OS" = "windows" ]; then echo .exe; fi)"
+
+  build-dev:
+    desc: Build for dev and run setup in dev mode
+    cmds:
+      - task: clean
+      - task: build-current
+      - task: build-setup
+      - echo "Running setup in dev mode..."
+      - ./setup dev
+
+  build-setup:
+    desc: Build the './setup' utility for the current system
+    cmds:
+      - |
+        SETUP_BINARY_NAME=setup
+        if [ "$(go env GOOS)" = "windows" ]; then SETUP_BINARY_NAME=setup.exe; fi
+        echo "Building 'setup' tool for current system..."
+        CGO_ENABLED=0 go build -ldflags="-s -w" -o $SETUP_BINARY_NAME ./cmd/setup
+        echo "Built: $SETUP_BINARY_NAME (in project root)"
+
+  manage-linux:
+    desc: Build 'manage' tool for linux-amd64
+    cmds:
+      - echo "Building 'manage' for linux-amd64..."
+      - CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o ./cmd/wp-manager/templates/docker-default-wordpress/manage ./cmd/manage
+      - "echo \"Built: ./cmd/wp-manager/templates/docker-default-wordpress/manage (for linux-amd64)\""
+
+  manage-windows:
+    desc: Build 'manage' tool for windows-amd64
+    cmds:
+      - echo "Building 'manage' for windows-amd64..."
+      - CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o ./cmd/wp-manager/templates/docker-default-wordpress/manage.exe ./cmd/manage
+      - "echo \"Built: ./cmd/wp-manager/templates/docker-default-wordpress/manage.exe (for windows-amd64)"
+
+  manage-darwin:
+    desc: Build 'manage' tool for darwin-amd64
+    cmds:
+      - echo "Building 'manage' for darwin-amd64..."
+      - CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -o ./cmd/wp-manager/templates/docker-default-wordpress/manage ./cmd/manage
+      - "echo \"Built: ./cmd/wp-manager/templates/docker-default-wordpress/manage (for darwin-amd64)\""
+
+  wpid-linux:
+    desc: Build 'wpid' for linux-amd64
+    deps: [manage-linux]
+    cmds:
+      - echo "Building 'wpid' for linux-amd64..."
+      - CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o ./dist/wpid-linux-amd64 ./cmd/wp-manager
+      - "echo \"Built: ./dist/wpid-linux-amd64"
+
+  wpid-windows:
+    desc: Build 'wpid' for windows-amd64
+    deps: [manage-windows]
+    cmds:
+      - echo "Building 'wpid' for windows-amd64..."
+      - CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o ./dist/wpid-windows-amd64.exe ./cmd/wp-manager
+      - "echo \"Built: ./dist/wpid-windows-amd64.exe"
+
+  wpid-darwin:
+    desc: Build 'wpid' for darwin-amd64
+    deps: [manage-darwin]
+    cmds:
+      - echo "Building 'wpid' for darwin-amd64..."
+      - CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -o ./dist/wpid-darwin-amd64 ./cmd/wp-manager
+      - "echo \"Built: ./dist/wpid-darwin-amd64"
+
+  clean:
+    desc: Remove all build artifacts
+    cmds:
+      - echo "Cleaning build artifacts..."
+      - rm -f ./cmd/wp-manager/templates/docker-default-wordpress/manage
+      - rm -f ./cmd/wp-manager/templates/docker-default-wordpress/manage.exe
+      - rm -rf ./dist/*
+      - rm -f setup
+      - rm -f setup.exe
+      - rm -f wpid
+      - rm -f wpid.exe
+      - echo "Clean complete."
+
+  lint:
+    desc: Run golangci-lint if available
+    cmds:
+      - cmd: golangci-lint run ./...
+        ignore_error: true
+
+  test:
+    desc: Run all Go tests
+    cmds:
+      - go test ./...
+
+  format:
+    desc: Run gofmt on all Go files
+    cmds:
+      - gofmt -w .
+
+  deps:
+    desc: Tidy and vendor Go modules
+    cmds:
+      - go mod tidy
+      - go mod vendor
+
+  help:
+    desc: Show help for all tasks
+    cmds:
+      - task --list
+
+  run:
+    desc: Run wpid locally
+    cmds:
+      - go run ./cmd/wp-manager
+
+  watch:
+    desc: Rebuild wpid on code changes (requires reflex)
+    cmds:
+      - reflex -r '\.go$' -s -- sh -c 'task build-current'
+
+  ci:
+    desc: Run all checks (lint, test, build)
+    cmds:
+      - task: lint
+      - task: test
+      - task: build-current
+
+  docs:
+    desc: Generate Go documentation
+    cmds:
+      - go doc ./...
+
+  pre-commit:
+    desc: Run checks before commit
+    cmds:
+      - task: format
+      - task: lint
+      - task: test

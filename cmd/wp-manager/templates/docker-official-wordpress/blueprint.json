@@ -1,0 +1,11 @@
+{
+  "name": "Offical WordPress DOcker IMage",
+  "description": "This blueprint uses the official WordPress Docker image to set up a WordPress site with a MySQL database.",
+  "folders": [
+    "wordpress",
+    "db",
+    "config"
+  ],
+  "plugins": [],
+  "themes": []
+}

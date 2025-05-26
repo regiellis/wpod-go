@@ -1,0 +1,47 @@
+# .gitignore for the wp-manager Go CLI project
+
+# --- Go Build Artifacts ---
+
+# Compiled main wp-manager binary (at the project root)
+/wp-manager
+/wp-manager.exe
+
+# Compiled 'manage' tool that gets placed into the templates directory
+# before being embedded. This path is relative to the .gitignore file (project root).
+/templates/docker-default-wordpress/manage
+/templates/docker-default-wordpress/manage.exe
+
+# --- IDE / Editor specific files ---
+.vscode/
+.idea/
+*.iml
+
+# --- OS generated files ---
+.DS_Store
+Thumbs.db
+
+# --- Swap/backup files from editors ---
+*.swp
+*.swo
+*.bak
+*.tmp
+*.orig
+*.rej
+
+# --- Local Development Environment (if any) ---
+# .env
+# .env.local
+
+# --- Other common Go ignores ---
+# *.o
+# *.a
+# vendor/ # If you use 'go mod vendor' and don't commit it
+# coverage.out
+# coverage.html
+
+# --- Distribution directory for compiled binaries (from Makefile) ---
+/dist/
+
+# --- Custom ---
+.wp-manager-instances.json
+.venv
