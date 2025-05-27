@@ -1,0 +1,62 @@
+# Stage 1: Build dependencies
+FROM debian:stable-slim AS builder
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl wget unzip build-essential jpegoptim optipng pngcrush imagemagick && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Stage 2: Runtime environment
+FROM wordpress:latest
+
+# Set environment variables
+ENV WORDPRESS_VERSION=latest
+ENV WP_CLI_VERSION=latest
+ENV NODE_ENV=development
+ENV WP_CLI_ALLOW_ROOT=1
+
+# Copy optimized tools from builder stage
+COPY --from=builder /usr/bin/jpegoptim /usr/bin/
+COPY --from=builder /usr/bin/optipng /usr/bin/
+COPY --from=builder /usr/bin/pngcrush /usr/bin/
+COPY --from=builder /usr/bin/convert /usr/bin/
+
+# Install WP-CLI directly in runtime image
+RUN curl -O https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar && \
+    chmod +x wp-cli.phar && mv wp-cli.phar /usr/local/bin/wp && wp --info
+
+# Install less so wp-cli can use it
+RUN apt-get update && apt-get install -y less && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+
+# Install xdebug
+RUN pecl install xdebug && \
+    docker-php-ext-enable xdebug
+
+
+# Install Composer
+RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer && \
+    composer --version    docker run -it custom-wordpress bash
+
+# Set timezone and locale correctly
+RUN apt-get update && apt-get install -y locales tzdata && \
+    echo "en_US.UTF-8 UTF-8" > /etc/locale.gen && locale-gen en_US.UTF-8 && update-locale LANG=en_US.UTF-8 TZ=UTC && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+ENV LANG=en_US.UTF-8 LANGUAGE=en_US:en LC_ALL=en_US.UTF-8 TZ=UTC
+
+# Add labels for metadata
+LABEL maintainer="Regi E <regi@bynine.io>"
+LABEL version="1.0"
+LABEL description="Custom WordPress Development Environment"
+
+# Expose WordPress port and add healthcheck
+EXPOSE 80
+HEALTHCHECK --interval=30s CMD curl -f http://localhost || exit 1
+
+# Change www-data UID/GID to match host user (1000)
+RUN groupmod -g 1000 www-data && \
+    usermod -u 1000 -g www-data www-data
+
+# ENTRYPOINT ["docker-entrypoint.sh"]
+CMD ["apache2-foreground"]
+# CMD ["/bin/bash", "-c", "export WP_CLI_ALLOW_ROOT=1 && apache2-foreground"]

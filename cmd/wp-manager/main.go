@@ -1,5 +1,5 @@
 /*
- * wpid - WordPress management tool
+ * wpod - WordPress management tool
  * Copyright (C) 2025 Regi E
  *
  * This program is free software: you can redistribute it and/or modify
@@ -51,10 +51,10 @@ var caddyfileTemplateContent string
 
 const (
 	embeddedTemplateRoot = "templates/docker-default-wordpress"
-	globalConfigFileName = ".wpid-config.json"
+	globalConfigFileName = ".wpod-config.json"
 	metaFileName         = ".wordpress-meta.json"
 	envTemplateFileName  = "env-template"
-	managerMetaFileName  = ".wpid-instances.json"
+	managerMetaFileName  = ".wpod-instances.json"
 	defaultWordPressPort = 8080
 	defaultMailpitSMTP   = 1025
 	defaultMailpitWeb    = 8025
@@ -212,7 +212,7 @@ func generateRandomPort() int {
 func getConfigStorageDir() (string, error) {
 	configDir, err := os.UserConfigDir()
 	if err != nil {
-		fallbackDir := ".wpid-data" // Fallback to a local directory in CWD
+		fallbackDir := ".wpod-data" // Fallback to a local directory in CWD
 		// Only print warning once if multiple calls hit this fallback
 		// This could be improved with a global flag if necessary
 		if _, errStat := os.Stat(fallbackDir); os.IsNotExist(errStat) {
@@ -224,11 +224,11 @@ func getConfigStorageDir() (string, error) {
 		return fallbackDir, nil
 	}
 
-	wpidDataDir := filepath.Join(configDir, "wpid")
-	if err := os.MkdirAll(wpidDataDir, 0700); err != nil { // 0700: owner rwx
-		return "", fmt.Errorf("could not create data directory %s: %w", wpidDataDir, err)
+	wpodDataDir := filepath.Join(configDir, "wpod")
+	if err := os.MkdirAll(wpodDataDir, 0700); err != nil { // 0700: owner rwx
+		return "", fmt.Errorf("could not create data directory %s: %w", wpodDataDir, err)
 	}
-	return wpidDataDir, nil
+	return wpodDataDir, nil
 }
 
 // getGlobalConfigPath uses getConfigStorageDir
@@ -245,7 +245,7 @@ func getManagerMetaPath() (string, error) {
 	if err != nil {
 		// If getConfigStorageDir returned the fallback path without error, use it.
 		// If it returned an actual error (e.g. couldn't create fallback), propagate that.
-		if (!strings.HasSuffix(storageDir, ".wpid-data") && storageDir != "") || storageDir == "" { // Check if it's not the successful fallback
+		if (!strings.HasSuffix(storageDir, ".wpod-data") && storageDir != "") || storageDir == "" { // Check if it's not the successful fallback
 			return "", fmt.Errorf("failed to get storage directory for manager meta: %w", err)
 		}
 	}
@@ -396,7 +396,7 @@ func writeManagerMeta(meta ManagerMeta) error {
 
 func handleConfigCommand(args []string) {
 	if len(args) == 0 {
-		printError("Config subcommand required.", "Usage: wpid config <get|set|show> <key> [value]")
+		printError("Config subcommand required.", "Usage: wpod config <get|set|show> <key> [value]")
 		printInfo("Available keys for config: sites_base_directory")
 		return
 	}
@@ -404,13 +404,13 @@ func handleConfigCommand(args []string) {
 	switch subcommand {
 	case "get":
 		if len(args) < 2 {
-			printError("Key required for 'get'.", "Usage: wpid config get <key>")
+			printError("Key required for 'get'.", "Usage: wpod config get <key>")
 			return
 		}
 		configGet(args[1])
 	case "set":
 		if len(args) < 2 {
-			printError("Key and value required for 'set'.", "Usage: wpid config set <key> <value>")
+			printError("Key and value required for 'set'.", "Usage: wpod config set <key> <value>")
 			return
 		}
 		key := args[1]
@@ -583,14 +583,14 @@ func parseEnvValue(envContent []byte, key string) string {
 func getModulePath() (string, error) {
 	// This assumes 'go' executable is in PATH and the command is run
 	// from within a directory that is part of a Go module, or a subdirectory.
-	// For 'wpid', it should be run from the project root ideally.
+	// For 'wpod', it should be run from the project root ideally.
 	cmd := exec.Command("go", "list", "-m")
 	var out bytes.Buffer
 	var stderr bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &stderr
 
-	// If wpid is run from a different directory than the project root,
+	// If wpod is run from a different directory than the project root,
 	// you might need to set cmd.Dir to the project root.
 	// Discovering the project root programmatically can be complex if not run from there.
 	// For now, we assume it's run in a context where 'go list -m' works for the project.
@@ -711,7 +711,7 @@ func createInstance() {
 		absGlobalPath, errAbs := filepath.Abs(globalConfig.SitesBaseDirectory)
 		if errAbs != nil {
 			printError("Invalid configured sites base directory path.", fmt.Sprintf("Could not make '%s' absolute: %v", globalConfig.SitesBaseDirectory, errAbs))
-			printInfo("Please fix or clear it using 'wpid config set sites_base_directory ...'. Aborting.")
+			printInfo("Please fix or clear it using 'wpod config set sites_base_directory ...'. Aborting.")
 			return
 		}
 		targetBaseDirFromConfig := absGlobalPath
@@ -1000,6 +1000,9 @@ func createInstance() {
 						if err != nil || p < 1 || p > 65535 {
 							return errors.New("invalid port")
 						}
+						if !isPortAvailable(p) {
+							return fmt.Errorf("port %d is not available on the host", p)
+						}
 						return nil
 					}),
 					huh.NewInput().Title("Caddy HTTPS Port").Description("Enter the HTTPS port for Caddy (default 443)").Value(&httpsPortStr).Placeholder("443").Validate(func(s string) error {
@@ -1009,6 +1012,9 @@ func createInstance() {
 						p, err := strconv.Atoi(s)
 						if err != nil || p < 1 || p > 65535 {
 							return errors.New("invalid port")
+						}
+						if !isPortAvailable(p) {
+							return fmt.Errorf("port %d is not available on the host", p)
 						}
 						return nil
 					}),
@@ -1409,7 +1415,7 @@ func createInstance() {
 			if strings.HasPrefix(trimmed, "caddy:") && strings.HasPrefix(line, "  caddy:") {
 				inCaddy = true
 				// Optionally, add a comment to indicate Caddy is disabled
-				newLines = append(newLines, "  # caddy: (disabled by WPID)")
+				newLines = append(newLines, "  # caddy: (disabled by WPOD)")
 				continue
 			}
 			if inCaddy {
@@ -1860,7 +1866,7 @@ func doctor() {
 	fmt.Println(lipgloss.NewStyle().Bold(true).MarginTop(1).Render("\n--- Project Template (Embedded) ---"))
 	templateHealthy := true
 	manageBinaryNameInTemplateForEmbedCheck := "manage" // Default for Linux/Darwin
-	// The doctor checks what *should have been embedded* based on the OS wpid was built for.
+	// The doctor checks what *should have been embedded* based on the OS wpod was built for.
 	if runtime.GOOS == "windows" {
 		manageBinaryNameInTemplateForEmbedCheck = "manage.exe"
 	}
@@ -1888,10 +1894,10 @@ func doctor() {
 		printSuccess("Embedded Template Structure OK", "Essential files found in the embedded template.")
 	}
 
-	fmt.Println(lipgloss.NewStyle().Bold(true).MarginTop(1).Render("\n--- Go Build Environment (for wpid itself) ---"))
+	fmt.Println(lipgloss.NewStyle().Bold(true).MarginTop(1).Render("\n--- Go Build Environment (for wpod itself) ---"))
 	goPath, goOk := checkExecutable("go")
 	if !goOk {
-		printWarning("Go Compiler Not Found", "The 'go' command was not found in your system's PATH.", "This is not critical for running pre-compiled wpid, but needed for development.")
+		printWarning("Go Compiler Not Found", "The 'go' command was not found in your system's PATH.", "This is not critical for running pre-compiled wpod, but needed for development.")
 	} else {
 		printSuccess("Go Compiler Found", fmt.Sprintf("Executable path: %s", goPath))
 	}
@@ -1902,7 +1908,7 @@ func doctor() {
 		printError("Cannot Check Permissions", "Failed to get current working directory.", errCwd.Error())
 		issuesFound++
 	} else {
-		tempFileName := ".wpid-doctor-write-test." + strconv.FormatInt(time.Now().UnixNano(), 10)
+		tempFileName := ".wpod-doctor-write-test." + strconv.FormatInt(time.Now().UnixNano(), 10)
 		tempFilePath := filepath.Join(cwd, tempFileName)
 		if errWrite := os.WriteFile(tempFilePath, []byte("test"), 0600); errWrite != nil {
 			printError("Write Permission Denied (Current Directory)",
@@ -2126,7 +2132,7 @@ func registerInstance() {
 func unregisterInstance(instanceName string) {
 	printSectionHeader("Unregister Instance")
 	if instanceName == "" {
-		printError("Instance Name Required", "Usage: wpid unregister <instance_name>")
+		printError("Instance Name Required", "Usage: wpod unregister <instance_name>")
 		return
 	}
 
@@ -2242,7 +2248,7 @@ func pruneInstances() {
 // locateInstance prints the directory path of a registered instance.
 func locateInstance(instanceName string) {
 	if instanceName == "" {
-		printError("Instance Name Required", "Usage: wpid locate <instance_name>")
+		printError("Instance Name Required", "Usage: wpod locate <instance_name>")
 		return
 	}
 
@@ -2258,14 +2264,14 @@ func locateInstance(instanceName string) {
 		os.Exit(1) // Exit non-zero for scripting use cases
 	}
 
-	// Print only the path for easy scripting use (e.g., cd $(wpid locate myblog))
+	// Print only the path for easy scripting use (e.g., cd $(wpod locate myblog))
 	fmt.Println(meta.Directory)
 }
 
-// handleMetaCommand handles subcommands for 'wpid meta'.
+// handleMetaCommand handles subcommands for 'wpod meta'.
 func handleMetaCommand(args []string) {
 	if len(args) < 1 {
-		printError("Meta Subcommand Required", "Usage: wpid meta [show|edit]")
+		printError("Meta Subcommand Required", "Usage: wpod meta [show|edit]")
 		return
 	}
 	subcommand := strings.ToLower(args[0])
@@ -2392,7 +2398,7 @@ func metaEdit() {
 			metaPath, editor,
 			errorMsgStyle.Render("WARNING:"),
 		) + "\n" + lipgloss.JoinVertical(lipgloss.Left,
-			"- Invalid JSON will prevent wpid from reading instances.",
+			"- Invalid JSON will prevent wpod from reading instances.",
 			"- Manually editing paths or names might break commands.",
 			"- Consider making a backup of the file first.",
 		)).
@@ -2593,6 +2599,33 @@ func promptAndStartInstance(instanceDir string) {
 			cmd.Stdout = os.Stdout
 			cmd.Stderr = os.Stderr
 			cmd.Run()
+		}
+
+		// --- Install plugins and themes from blueprint.json if present ---
+		blueprintPath := filepath.Join(absDir, "blueprint.json")
+		if data, err := os.ReadFile(blueprintPath); err == nil {
+			var meta struct {
+				Plugins []string `json:"plugins"`
+				Themes  []string `json:"themes"`
+			}
+			if json.Unmarshal(data, &meta) == nil {
+				for _, plugin := range meta.Plugins {
+					printInfo("Installing plugin via WP-CLI:", plugin)
+					installCmd := exec.Command("docker", "compose", "exec", "-T", "wordpress", "wp", "plugin", "install", plugin, "--activate")
+					installCmd.Dir = absDir
+					installCmd.Stdout = os.Stdout
+					installCmd.Stderr = os.Stderr
+					_ = installCmd.Run()
+				}
+				for _, theme := range meta.Themes {
+					printInfo("Installing theme via WP-CLI:", theme)
+					installCmd := exec.Command("docker", "compose", "exec", "-T", "wordpress", "wp", "theme", "install", theme, "--activate")
+					installCmd.Dir = absDir
+					installCmd.Stdout = os.Stdout
+					installCmd.Stderr = os.Stderr
+					_ = installCmd.Run()
+				}
+			}
 		}
 	}
 }

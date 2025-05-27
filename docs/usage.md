@@ -1,6 +1,6 @@
 # Usage
 
-WPID is designed for easy management of multiple WordPress environments. Here are common workflows:
+WPOD is designed for easy management of multiple WordPress environments. Here are common workflows:
 
 - **Start/Stop Services**:
   ```sh

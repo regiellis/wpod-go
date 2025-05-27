@@ -1,6 +1,6 @@
 # Advanced Usage
 
-WPID supports advanced workflows for power users:
+WPOD supports advanced workflows for power users:
 
 - **Custom Services**: Edit `docker-compose.yml` to add Redis, Xdebug, or other services.
 - **Environment Variables**: Tweak `.env` for ports, DB credentials, or debug flags.

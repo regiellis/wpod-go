@@ -2,26 +2,26 @@ version: '3'
 
 tasks:
   all:
-    desc: Build 'WPID' for Linux, Windows, and macOS (amd64)
-    deps: [build-all-wpid]
+    desc: Build 'WPOD' for Linux, Windows, and macOS (amd64)
+    deps: [build-all-wpod]
 
-  build-all-wpid:
-    desc: Build 'WPID' for all three platforms
-    deps: [wpid-linux, wpid-windows, wpid-darwin]
+  build-all-wpod:
+    desc: Build 'WPOD' for all three platforms
+    deps: [wpod-linux, wpod-windows, wpod-darwin]
     cmds:
-      - echo "All 'WPID' builds complete. Binaries are in ./dist/"
+      - echo "All 'WPOD' builds complete. Binaries are in ./dist/"
 
   build-current:
-    desc: Build 'manage' and 'wpid' for the current system's OS/ARCH
+    desc: Build 'manage' and 'wpod' for the current system's OS/ARCH
     cmds:
       - |
         CURRENT_OS=$(go env GOOS)
         CURRENT_ARCH=$(go env GOARCH)
         echo "Building 'manage' for current system ($CURRENT_OS-$CURRENT_ARCH)..."
         CGO_ENABLED=0 GOOS=$CURRENT_OS GOARCH=$CURRENT_ARCH go build -ldflags="-s -w" -o ./cmd/wp-manager/templates/docker-default-wordpress/manage$(if [ "$CURRENT_OS" = "windows" ]; then echo .exe; fi) ./cmd/manage
-        echo "Building 'wpid' for current system ($CURRENT_OS-$CURRENT_ARCH)..."
-        CGO_ENABLED=0 GOOS=$CURRENT_OS GOARCH=$CURRENT_ARCH go build -ldflags="-s -w" -o ./dist/wpid$(if [ "$CURRENT_OS" = "windows" ]; then echo .exe; fi) ./cmd/wp-manager
-        echo "Built for current system: ./dist/wpid$(if [ "$CURRENT_OS" = "windows" ]; then echo .exe; fi)"
+        echo "Building 'wpod' for current system ($CURRENT_OS-$CURRENT_ARCH)..."
+        CGO_ENABLED=0 GOOS=$CURRENT_OS GOARCH=$CURRENT_ARCH go build -ldflags="-s -w" -o ./dist/wpod$(if [ "$CURRENT_OS" = "windows" ]; then echo .exe; fi) ./cmd/wp-manager
+        echo "Built for current system: ./dist/wpod$(if [ "$CURRENT_OS" = "windows" ]; then echo .exe; fi)"
 
   build-dev:
     desc: Build for dev and run setup in dev mode
@@ -63,29 +63,29 @@ tasks:
       - CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -o ./cmd/wp-manager/templates/docker-default-wordpress/manage ./cmd/manage
       - "echo \"Built: ./cmd/wp-manager/templates/docker-default-wordpress/manage (for darwin-amd64)\""
 
-  wpid-linux:
-    desc: Build 'wpid' for linux-amd64
+  wpod-linux:
+    desc: Build 'wpod' for linux-amd64
     deps: [manage-linux]
     cmds:
-      - echo "Building 'wpid' for linux-amd64..."
-      - CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o ./dist/wpid-linux-amd64 ./cmd/wp-manager
-      - "echo \"Built: ./dist/wpid-linux-amd64"
+      - echo "Building 'wpod' for linux-amd64..."
+      - CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o ./dist/wpod-linux-amd64 ./cmd/wp-manager
+      - "echo \"Built: ./dist/wpod-linux-amd64"
 
-  wpid-windows:
-    desc: Build 'wpid' for windows-amd64
+  wpod-windows:
+    desc: Build 'wpod' for windows-amd64
     deps: [manage-windows]
     cmds:
-      - echo "Building 'wpid' for windows-amd64..."
-      - CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o ./dist/wpid-windows-amd64.exe ./cmd/wp-manager
-      - "echo \"Built: ./dist/wpid-windows-amd64.exe"
+      - echo "Building 'wpod' for windows-amd64..."
+      - CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o ./dist/wpod-windows-amd64.exe ./cmd/wp-manager
+      - "echo \"Built: ./dist/wpod-windows-amd64.exe"
 
-  wpid-darwin:
-    desc: Build 'wpid' for darwin-amd64
+  wpod-darwin:
+    desc: Build 'wpod' for darwin-amd64
     deps: [manage-darwin]
     cmds:
-      - echo "Building 'wpid' for darwin-amd64..."
-      - CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -o ./dist/wpid-darwin-amd64 ./cmd/wp-manager
-      - "echo \"Built: ./dist/wpid-darwin-amd64"
+      - echo "Building 'wpod' for darwin-amd64..."
+      - CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -o ./dist/wpod-darwin-amd64 ./cmd/wp-manager
+      - "echo \"Built: ./dist/wpod-darwin-amd64"
 
   clean:
     desc: Remove all build artifacts
@@ -96,8 +96,8 @@ tasks:
       - rm -rf ./dist/*
       - rm -f setup
       - rm -f setup.exe
-      - rm -f wpid
-      - rm -f wpid.exe
+      - rm -f wpod
+      - rm -f wpod.exe
       - echo "Clean complete."
 
   lint:
@@ -128,12 +128,12 @@ tasks:
       - task --list
 
   run:
-    desc: Run wpid locally
+    desc: Run wpod locally
     cmds:
       - go run ./cmd/wp-manager
 
   watch:
-    desc: Rebuild wpid on code changes (requires reflex)
+    desc: Rebuild wpod on code changes (requires reflex)
     cmds:
       - reflex -r '\.go$' -s -- sh -c 'task build-current'
 

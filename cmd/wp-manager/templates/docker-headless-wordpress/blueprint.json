@@ -1,0 +1,12 @@
+{
+  "name": "WPOD Opinionated Headless WordPress Template",
+  "description": "This is athe headless opinionated WordPress build of the official WordPress image with a few customizations.",
+  "folders": [
+    "wordpress",
+    "wp-content",
+    "db",
+    "config"
+  ],
+  "plugins": ["WPGraphQL", "WPGraphQL for ACF", "Secure Custom Fields"],
+  "themes": []
+}

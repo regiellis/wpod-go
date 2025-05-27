@@ -1,5 +1,5 @@
 /*
- * wpid - WordPress management tool
+ * wpod - WordPress management tool
  * Copyright (C) 2025 Regi E
  *
  * This program is free software: you can redistribute it and/or modify
@@ -33,7 +33,7 @@ import (
 )
 
 const (
-	appName                 = "wpid"
+	appName                 = "wpod"
 	defaultInstallDirUnix   = "/usr/local/bin"
 	distDir                 = "./dist"
 	projectRootLinkNameUnix = "./" + appName
@@ -98,7 +98,7 @@ func findTargetBinaryInDist(offerToBuild bool) (string, error) {
 	for _, legacy := range legacyNames {
 		legacyPath := filepath.Join(distDir, legacy)
 		if _, err := os.Stat(legacyPath); err == nil {
-			printWarning(fmt.Sprintf("Found legacy binary: %s (please rename to 'wpid' for consistency)", legacyPath))
+			printWarning(fmt.Sprintf("Found legacy binary: %s (please rename to 'wpod' for consistency)", legacyPath))
 			return legacyPath, nil
 		}
 	}

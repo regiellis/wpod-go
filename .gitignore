@@ -3,13 +3,15 @@
 # --- Go Build Artifacts ---
 
 # Compiled main wp-manager binary (at the project root)
-/wp-manager
-/wp-manager.exe
+wpod
+setup
+wpod.exe
+setup.exe
 
 # Compiled 'manage' tool that gets placed into the templates directory
 # before being embedded. This path is relative to the .gitignore file (project root).
-/templates/docker-default-wordpress/manage
-/templates/docker-default-wordpress/manage.exe
+# /templates/**/*/manage
+# /templates/**/*/manage.exe
 
 # --- IDE / Editor specific files ---
 .vscode/
@@ -29,7 +31,7 @@ Thumbs.db
 *.rej
 
 # --- Local Development Environment (if any) ---
-# .env
+.env
 # .env.local
 
 # --- Other common Go ignores ---
@@ -43,5 +45,7 @@ Thumbs.db
 /dist/
 
 # --- Custom ---
-.wp-manager-instances.json
+.wpod-instances.json
 .venv
+/sites/
+*.tape

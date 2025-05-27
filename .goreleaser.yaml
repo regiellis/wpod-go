@@ -1,16 +1,16 @@
-# .goreleaser.yaml for WPID/WordPress in Docker
-# Builds and releases 'wpid' (main CLI) and 'manage' (instance tool) for multiple platforms
+# .goreleaser.yaml for WPOD/WordPress in Docker
+# Builds and releases 'wpod' (main CLI) and 'manage' (instance tool) for multiple platforms
 
-project_name: wpid
+project_name: wpod
 
 dist: dist
 
 dockers: []
 
 builds:
-  - id: wpid
+  - id: wpod
     main: ./cmd/wp-manager
-    binary: wpid
+    binary: wpod
     goos:
       - linux
       - windows
@@ -21,11 +21,11 @@ builds:
       - -s -w
     env:
       - CGO_ENABLED=0
-    # Output: dist/wpid-{{ .Os }}-{{ .Arch }}{{ if eq .Os "windows" }}.exe{{ end }}
+    # Output: dist/wpod-{{ .Os }}-{{ .Arch }}{{ if eq .Os "windows" }}.exe{{ end }}
     # Custom output name for each platform
     hooks:
       post: |
-        echo "Built wpid for $GOOS-$GOARCH"
+        echo "Built wpod for $GOOS-$GOARCH"
 
   - id: manage
     main: ./cmd/manage
@@ -44,14 +44,14 @@ builds:
       post: |
         echo "Built manage for $GOOS-$GOARCH"
 archives:
-  - id: wpid-archive
-    builds: [wpid, manage]
+  - id: wpod-archive
+    builds: [wpod, manage]
     format: tar.gz
-    name_template: "wpid-{{ .Version }}-{{ .Os }}-{{ .Arch }}"
+    name_template: "wpod-{{ .Version }}-{{ .Os }}-{{ .Arch }}"
     files:
       - LICENSE
       - README.md
-      - dist/wp* # include all wpid binaries
+      - dist/wp* # include all wpod binaries
       - dist/manage* # include all manage binaries
       - setup*
       - Taskfile.yml

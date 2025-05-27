@@ -1,6 +1,6 @@
-site_name: WPID Documentation
-repo_url: https://github.com/regiellis/wpid-go
-repo_name: WPID
+site_name: WPOD Documentation
+repo_url: https://github.com/regiellis/wpod-go
+repo_name: WPOD
 nav:
   - Home: index.md
   - Getting Started: getting-started.md
@@ -47,6 +47,6 @@ markdown_extensions:
 extra:
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/regiellis/wpid-go
+      link: https://github.com/regiellis/wpod-go
   generator: false
 

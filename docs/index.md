@@ -1,12 +1,12 @@
-# WPID: WordPress in Docker
+# WPOD: WordPress in Docker
 
-WPID is a modern CLI tool for managing local WordPress environments using Docker. This documentation covers all major commands, workflows, troubleshooting, and best practices for using WPID in real-world development.
+WPOD is a modern CLI tool for managing local WordPress environments using Docker. This documentation covers all major commands, workflows, troubleshooting, and best practices for using WPOD in real-world development.
 
 ---
 
-## What is WPID?
+## What is WPOD?
 
-WPID lets you create, manage, and destroy fully isolated WordPress stacks on your local machine. Each instance includes WordPress, MySQL, Adminer, Mailpit, and optionally Caddy for HTTPS. It is designed for developers who want:
+WPOD lets you create, manage, and destroy fully isolated WordPress stacks on your local machine. Each instance includes WordPress, MySQL, Adminer, Mailpit, and optionally Caddy for HTTPS. It is designed for developers who want:
 
 - Fast, repeatable WordPress environments
 - No global PHP/MySQL/Apache required
@@ -20,14 +20,14 @@ WPID lets you create, manage, and destroy fully isolated WordPress stacks on you
 Run:
 
 ```sh
-wpid create
+wpod create
 ```
 
-You will be prompted for an instance name, and whether to customize ports, credentials, and Caddy (reverse proxy) settings. WPID checks for port conflicts and guides you through safe choices.
+You will be prompted for an instance name, and whether to customize ports, credentials, and Caddy (reverse proxy) settings. WPOD checks for port conflicts and guides you through safe choices.
 
 **Tips:**
 
-- If ports 80/443 are in use, WPID will suggest disabling the built-in Caddy and using your own reverse proxy.
+- If ports 80/443 are in use, WPOD will suggest disabling the built-in Caddy and using your own reverse proxy.
 - You can always edit the generated `.env` and `docker-compose.yml` for advanced tweaks.
 
 **Common errors:**
@@ -80,7 +80,7 @@ From inside the instance directory, use the `manage` tool:
 
 ## Caddy & HTTPS
 
-WPID can run a Caddy container for local HTTPS, or you can use the generated Caddyfile with your own host-level Caddy/Nginx/Apache. During creation, you’ll be prompted to enable/disable Caddy. If you use your own reverse proxy, point it to the WordPress container’s port (see `.env`).
+WPOD can run a Caddy container for local HTTPS, or you can use the generated Caddyfile with your own host-level Caddy/Nginx/Apache. During creation, you’ll be prompted to enable/disable Caddy. If you use your own reverse proxy, point it to the WordPress container’s port (see `.env`).
 
 **Troubleshooting:**
 
@@ -112,7 +112,7 @@ WPID can run a Caddy container for local HTTPS, or you can use the generated Cad
 - Use a separate instance for each project/client.
 - Regularly backup your database and `wp-content`.
 - Use the CLI for all management tasks—avoid manual container or file edits unless necessary.
-- Keep WPID and Docker images up to date (`wpid update`, `./manage update`).
+- Keep WPOD and Docker images up to date (`wpod update`, `./manage update`).
 
 ---
 
@@ -127,4 +127,4 @@ WPID can run a Caddy container for local HTTPS, or you can use the generated Cad
 
 ---
 
-WPID is open source and welcomes issues, feedback, and contributions. For more, visit the [GitHub repo](https://github.com/regiellis/wpid-go).
+WPOD is open source and welcomes issues, feedback, and contributions. For more, visit the [GitHub repo](https://github.com/regiellis/wpod-go).

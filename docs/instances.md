@@ -1,12 +1,12 @@
 # Managing Instances
 
-Each WordPress project is an "instance" managed by WPID. Instances are fully isolated and have their own configuration, files, and database.
+Each WordPress project is an "instance" managed by WPOD. Instances are fully isolated and have their own configuration, files, and database.
 
 ## Creating an Instance
 
 Run:
 ```sh
-wpid create
+wpod create
 ```
 Follow the prompts to set up a new instance.
 

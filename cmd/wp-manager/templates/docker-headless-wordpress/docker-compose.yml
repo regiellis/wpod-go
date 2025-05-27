@@ -1,0 +1,102 @@
+services:
+  wordpress:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        WORDPRESS_VERSION: ${WORDPRESS_VERSION}
+    container_name: wordpress_${WORDPRESS_CONTAINER_NAME}
+    restart: unless-stopped
+    environment:
+      WORDPRESS_DB_HOST: ${WORDPRESS_DB_HOST:-db}
+      WORDPRESS_DB_USER: ${WORDPRESS_DB_USER:-wordpress}
+      WORDPRESS_DB_PASSWORD: ${MYSQL_PASSWORD}
+      WORDPRESS_DB_NAME: ${WORDPRESS_DB_NAME:-wordpress}
+      WORDPRESS_AUTH_KEY: ${WORDPRESS_AUTH_KEY}
+      WORDPRESS_SECURE_AUTH_KEY: ${WORDPRESS_SECURE_AUTH_KEY}
+      WORDPRESS_LOGGED_IN_KEY: ${WORDPRESS_LOGGED_IN_KEY}
+      WORDPRESS_NONCE_KEY: ${WORDPRESS_NONCE_KEY}
+      WORDPRESS_AUTH_SALT: ${WORDPRESS_AUTH_SALT}
+      WORDPRESS_SECURE_AUTH_SALT: ${WORDPRESS_SECURE_AUTH_SALT}
+      WORDPRESS_LOGGED_IN_SALT: ${WORDPRESS_LOGGED_IN_SALT}
+      WORDPRESS_NONCE_SALT: ${WORDPRESS_NONCE_SALT}
+      WORDPRESS_TABLE_PREFIX: ${WORDPRESS_TABLE_PREFIX:-wp_}
+      WORDPRESS_DEBUG: ${WORDPRESS_DEBUG:-1}
+    volumes:
+      - ./wordpress:/var/www/html
+      - ./wp-content:/var/www/html/wp-content
+    ports:
+      - "${WORDPRESS_PORT:-8080}:80"
+    networks:
+      - wordpress_network
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: mysql:8.0
+    container_name: wordpress_db_${WORDPRESS_CONTAINER_NAME}
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-wordpress}
+      MYSQL_USER: ${MYSQL_USER:-wordpress}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    volumes:
+      - db_data:/var/lib/mysql
+    networks:
+      - wordpress_network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+  adminer:
+    image: adminer
+    container_name: wordpress_adminerNeo_${WORDPRESS_CONTAINER_NAME}
+    restart: unless-stopped
+    ports:
+      - "${ADMINER_PORT:-8081}:8080"
+    environment:
+      NEO_COLOR_VARIANT: green
+      NEO_PREFER_SELECTION: "true"
+      NEO_JSON_VALUES_DETECTION: "true"
+    networks:
+      - wordpress_network
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:${ADMINER_PORT:-8081}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+  mailpit:
+    image: axllent/mailpit
+    container_name: wordpress_mailpit_${WORDPRESS_CONTAINER_NAME}
+    restart: unless-stopped
+    ports:
+      - "${MAILPIT_PORT_SMTP:-1025}:1025"
+      - "${MAILPIT_PORT_WEB:-8025}:8025"
+    networks:
+      - wordpress_network
+
+  caddy:
+    image: caddy:latest
+    container_name: wordpress_caddy_${WORDPRESS_CONTAINER_NAME}
+    restart: unless-stopped
+    ports:
+      - "${CADDY_HTTP_PORT:-80}:80"
+      - "${CADDY_HTTPS_PORT:-443}:443"
+    volumes:
+      - ./config/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - wordpress_network
+
+networks:
+  wordpress_network:
+    driver: bridge
+
+volumes:
+  db_data:
+  caddy_data:
+  caddy_config:

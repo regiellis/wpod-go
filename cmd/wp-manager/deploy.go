@@ -1,5 +1,5 @@
 /*
- * wpid - WordPress management tool
+ * wpod - WordPress management tool
  * Copyright (C) 2025 Regi E
  *
  * This program is free software: you can redistribute it and/or modify

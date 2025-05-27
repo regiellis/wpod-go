@@ -1,6 +1,6 @@
 {
-  "name": "Default WordPress",
-  "description": "A standard WordPress setup with no extra plugins.",
+  "name": "WPOD Opinionated WordPress Template",
+  "description": "This is a opinionated WordPress build of the official WordPress image with a few customizations.",
   "folders": [
     "wordpress",
     "wp-content",

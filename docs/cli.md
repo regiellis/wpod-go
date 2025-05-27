@@ -1,6 +1,6 @@
 # CLI Reference
 
-WPID provides a CLI tool (`manage`) for instance management. Common commands include:
+WPOD provides a CLI tool (`manage`) for instance management. Common commands include:
 
 - `./manage start` — Start all services
 - `./manage stop` — Stop all services
