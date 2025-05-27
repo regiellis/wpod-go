@@ -35,33 +35,8 @@ Local WordPress development can be a pain. Different PHP versions, conflicting d
 - 👨‍💻 **Developer Focused:** Designed by a developer, for developers and server admin
 
 ## 🎬 Quick Demo / Screenshot
+![alt text](demos/create.gif)
 
-> [!TIP]
-> Consider adding a short GIF or a more detailed screenshot here showing `wpod create`, then `wpod list`, and maybe the `manage` tool in action for a better visual understanding.
-
-```bash
-$ wpod create my-awesome-site
-# ... friendly output ...
-🎉 Instance Created Successfully!
-   Name: my-awesome-site
-   Directory: /path/to/your-sites/www-my-awesome-site-wordpress
-   WordPress Port (on host): 12345
-   Suggested Dev Hostname: my-awesome-site.minio.local
-     (Ensure 127.0.0.1 my-awesome-site.minio.local is in your hosts file)
-     (Ensure your host Caddy imports /path/to/.config/wpod/wpod-sites.caddy and is reloaded)
-   Mailpit Web UI: http://localhost:8026 (SMTP on port 1026)
-
-   Next steps:
-     cd /path/to/your-sites/www-my-awesome-site-wordpress
-     Run: ./manage up -d
-     Access via browser: http://localhost:12345 (or http://my-awesome-site.minio.local if hosts/Caddy configured)
-
-$ wpod list
-╭─ List WordPress Instances
-Instance Name                     Port    Created             WP Ver   DB Ver   Directory                                       Status
-my-awesome-site                   12345   2023-10-27 10:00:00 6.4      8.0      .../www-my-awesome-site-wordpress               Running
-another-project                   12346   2023-10-26 15:30:00 6.3      5.7      .../www-another-project-wordpress               Stopped
-```
 
 ## 🛠️ Features
 

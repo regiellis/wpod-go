@@ -1170,11 +1170,16 @@ func createInstance() {
 		printInfo("Assigned Mailpit SMTP Port:", fmt.Sprintf("%d", mailpitSMTPPort))
 		printInfo("Assigned Mailpit Web Port:", fmt.Sprintf("%d", mailpitWebPort))
 		printInfo("Assigned Adminer Web Port:", fmt.Sprintf("%d", adminerWebPort))
-	}
-	if wordpressPort == 0 {
-		printError("Internal Error", "WordPress port not assigned.")
-		os.RemoveAll(fullInstanceName)
-		return
+
+		// --- Caddy port check for defaults ---
+		if !isPortAvailable(80) || !isPortAvailable(443) {
+			caddyEnabled = false
+			printWarning("Ports 80 and/or 443 are already in use.", "Caddy container will NOT be enabled by default.")
+			printInfo("To start Caddy manually later, run:", "docker compose up -d caddy")
+			printInfo("Or see docs/caddy.md for manual reverse proxy setup.")
+		} else {
+			caddyEnabled = true
+		}
 	}
 
 	printInfo("Setting up instance directory structure...", fmt.Sprintf("Target: %s", commandStyle.Render(fullInstanceName)))
@@ -1391,6 +1396,12 @@ func createInstance() {
 		fmt.Sprintf("  Run: %s", commandStyle.Render(fmt.Sprintf("./%s start", manageBinaryNameInProject))),
 		fmt.Sprintf("  Access via browser: %s (if hosts/Caddy configured) or http://0.0.0.0:%d", commandStyle.Render(devHostName), wordpressPort),
 	}
+	// Add Caddy manual start instructions if not enabled
+	if !caddyEnabled {
+		successDetails = append(successDetails, "", lipgloss.NewStyle().Foreground(lipgloss.Color("11")).Render("Caddy was not enabled. To start Caddy manually (if ports become free):"))
+		successDetails = append(successDetails, "  docker compose up -d caddy")
+		successDetails = append(successDetails, "  See docs/caddy.md for more info on manual reverse proxy setup.")
+	}
 	printSuccess("🎉 Instance Created Successfully!", successDetails...)
 
 	promptAndStartInstance(fullInstanceName)
@@ -1405,7 +1416,7 @@ func createInstance() {
 		return
 	}
 	if !caddyEnabled {
-		// Remove or comment out the Caddy service block
+		// Add 'profiles: [donotstart]' to the Caddy service block
 		lines := strings.Split(string(dockerComposeContent), "\n")
 		var newLines []string
 		inCaddy := false
@@ -1414,45 +1425,35 @@ func createInstance() {
 			trimmed := strings.TrimSpace(line)
 			if strings.HasPrefix(trimmed, "caddy:") && strings.HasPrefix(line, "  caddy:") {
 				inCaddy = true
-				// Optionally, add a comment to indicate Caddy is disabled
-				newLines = append(newLines, "  # caddy: (disabled by WPOD)")
+				newLines = append(newLines, line)
 				continue
 			}
 			if inCaddy {
+				// Insert profiles after container_name or restart (if not already present)
+				if strings.HasPrefix(trimmed, "container_name:") || strings.HasPrefix(trimmed, "restart:") {
+					newLines = append(newLines, line)
+					// Check if next line is already profiles
+					if i+1 < len(lines) && strings.TrimSpace(lines[i+1]) == "profiles:" {
+						// Already present, skip
+						continue
+					}
+					// Insert profiles
+					newLines = append(newLines, "    profiles:", "      - donotstart")
+					continue
+				}
 				// End of service block is when we hit a non-indented line or another top-level service
 				if len(line) > 0 && !strings.HasPrefix(line, " ") && !strings.HasPrefix(line, "\t") {
 					inCaddy = false
 				}
 			}
-			if !inCaddy {
-				newLines = append(newLines, line)
-			}
+			newLines = append(newLines, line)
 		}
-		// Remove caddy volumes if present
-		var finalLines []string
-		inCaddyVolume := false
-		for i := 0; i < len(newLines); i++ {
-			line := newLines[i]
-			if strings.HasPrefix(strings.TrimSpace(line), "caddy_data:") || strings.HasPrefix(strings.TrimSpace(line), "caddy_config:") {
-				inCaddyVolume = true
-				continue // skip these lines
-			}
-			if inCaddyVolume {
-				if len(line) > 0 && !strings.HasPrefix(line, " ") && !strings.HasPrefix(line, "\t") {
-					inCaddyVolume = false
-				}
-				if inCaddyVolume {
-					continue
-				}
-			}
-			finalLines = append(finalLines, line)
-		}
-		if err := os.WriteFile(dockerComposeInstancePath, []byte(strings.Join(finalLines, "\n")), 0644); err != nil {
-			printError("Failed to patch docker-compose.yml to disable Caddy", err.Error())
+		if err := os.WriteFile(dockerComposeInstancePath, []byte(strings.Join(newLines, "\n")), 0644); err != nil {
+			printError("Failed to patch docker-compose.yml to add Caddy profile", err.Error())
 			os.RemoveAll(fullInstanceName)
 			return
 		}
-		printInfo("Caddy service disabled in docker-compose.yml for this instance.")
+		printInfo("Caddy service set to 'donotstart' profile in docker-compose.yml for this instance.")
 	}
 }
 
