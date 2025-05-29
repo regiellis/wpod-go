@@ -949,8 +949,9 @@ func createInstance() {
 	// --- Caddy Port Assignment and Prompting Logic ---
 	caddyHTTPPort := 80
 	caddyHTTPSPort := 443
+	caddyPortsAvailable := isPortAvailable(80) && isPortAvailable(443)
 	caddyEnabled := false
-	if !isPortAvailable(80) || !isPortAvailable(443) {
+	if !caddyPortsAvailable {
 		printWarning("Ports 80 and/or 443 are already in use.", "A host-level web server (Caddy, Nginx, Apache, etc.) may be running.")
 		printInfo("Caddy container will NOT be enabled by default.", "You can use the provided Caddyfile template for your host server.")
 	} else {
@@ -1171,10 +1172,9 @@ func createInstance() {
 		printInfo("Assigned Mailpit Web Port:", fmt.Sprintf("%d", mailpitWebPort))
 		printInfo("Assigned Adminer Web Port:", fmt.Sprintf("%d", adminerWebPort))
 
-		// --- Caddy port check for defaults ---
-		if !isPortAvailable(80) || !isPortAvailable(443) {
+		if !caddyPortsAvailable {
 			caddyEnabled = false
-			printWarning("Ports 80 and/or 443 are already in use.", "Caddy container will NOT be enabled by default.")
+			// Only print the manual Caddy info here, not the warning again
 			printInfo("To start Caddy manually later, run:", "docker compose up -d caddy")
 			printInfo("Or see docs/caddy.md for manual reverse proxy setup.")
 		} else {
