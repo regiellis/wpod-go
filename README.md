@@ -4,6 +4,10 @@
 
 ---
 
+> [!WARNING]
+> Given the release of [Studio by WordPress](https://developer.wordpress.com/studio/) and the communities focus on theming and builds and less on DevOps, I will be discontinuing active development of WPOD. However, I will keep the repository open for anyone who > wants to fork it and continue development. I will also keep the pre-compiled binaries available for download. This was a fun project to learn Go and Docker, and I hope it has helped you in your local WordPress development journey. Thank you for your support! Note that this is unpolished and the documentation is not complete. I will not be adding any new features or fixing any bugs, but I will be happy to answer any questions you may have.
+🙏
+
 > [!NOTE]
 > Hey there! I’m the creator of WPOD. While my background is primarily in Python and other web frameworks, this project gave me an exciting opportunity to dive into Go. I was immediately drawn to Go’s simplicity, impressive performance, and its strength in building robust command-line tools.
 >

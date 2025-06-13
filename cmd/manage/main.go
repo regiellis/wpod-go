@@ -41,6 +41,9 @@ import (
 	"syscall"
 	"time"
 
+	"crypto/rand"
+	"math/big"
+
 	"github.com/charmbracelet/huh"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/joho/godotenv"
@@ -243,36 +246,6 @@ func loadEnvOrFail() {
 	printVerbose(fmt.Sprintf("Loaded environment from %s", envFileName))
 }
 
-func runCommandWithDir(dir string, name string, args ...string) error {
-	printInfo("Running Command", fmt.Sprintf("%s %s", name, strings.Join(args, " ")))
-	cmd := exec.Command(name, args...)
-	if dir != "" {
-		cmd.Dir = dir
-	}
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	err := cmd.Run()
-	if err != nil {
-		printError("Command Failed", fmt.Sprintf("Error executing: %s %s", name, strings.Join(args, " ")), err.Error())
-	}
-	return err
-}
-
-// loadEnv loads .env file from the current directory.
-func loadEnv() error {
-	if _, err := os.Stat(envFileName); os.IsNotExist(err) {
-		printError(fmt.Sprintf("Environment file '%s' not found.", envFileName), "This script must be run from an instance directory.")
-		return err
-	}
-	err := godotenv.Load(envFileName)
-	if err != nil {
-		printError(fmt.Sprintf("Error loading '%s' file", envFileName), err.Error())
-		return err
-	}
-	printInfo(fmt.Sprintf("Loaded environment from %s", envFileName))
-	return nil
-}
-
 // wpCLI runs a wp-cli command via docker compose exec AS THE www-data USER. Handles context.
 func wpCLI(ctx context.Context, args ...string) error {
 	wpArgs := append([]string{"compose", "exec", "-T", "--user", "www-data", "wordpress", "wp"}, args...)
@@ -290,25 +263,6 @@ type LocalInstanceMeta struct {
 	WordPressVersion string `json:"wordpress_version,omitempty"`
 	DBVersion        string `json:"db_version,omitempty"`
 	Status           string `json:"status,omitempty"`
-}
-
-func runCommandWithOutputStreams(name string, args ...string) error {
-	printInfo("Running Command:", fmt.Sprintf("%s %s", name, strings.Join(args, " ")))
-	cmd := exec.Command(name, args...)
-	// cmd.Dir can be set here if needed, but manage-go usually runs in instance dir
-
-	// Pipe output directly to the Go program's output/error streams
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-
-	err := cmd.Run()
-	if err != nil {
-		// Don't double-print the error, as it should have streamed to stderr already.
-		// Just return the error signal.
-		// printError("Command Failed", fmt.Sprintf("Error executing: %s %s", name, strings.Join(args, " ")), err.Error())
-		return fmt.Errorf("command failed: %w", err) // Wrap error for context
-	}
-	return nil // Success
 }
 
 func readLocalMeta() (*LocalInstanceMeta, error) {
@@ -357,47 +311,6 @@ func shellQuote(s string) string {
 	// Replace every ' with '\'' (close quote, escaped single quote, reopen quote)
 	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
 }
-
-// Helper to run a command with sudo, asking for confirmation.
-// This will prompt for sudo password on the host.
-func runCommandWithSudoHost(ctx context.Context, description string, command string, args ...string) error {
-	printInfo("Action required:", description)
-	printInfo("This will run the following command with sudo on your host machine:")
-	fullCmdStr := fmt.Sprintf("sudo %s %s", command, strings.Join(args, " "))
-	printInfo("  " + commandStyle.Render(fullCmdStr))
-
-	var confirmSudo bool
-	form := huh.NewForm(
-		huh.NewGroup(
-			huh.NewConfirm().
-				Title("Confirm Sudo Execution").
-				Description("Are you sure you want to run this command with sudo?").
-				Affirmative("Yes, proceed").
-				Negative("No, cancel").
-				Value(&confirmSudo),
-		),
-	).WithTheme(huhTheme) // Use your manage tool's theme
-
-	if err := form.Run(); err != nil || !confirmSudo {
-		printInfo("Sudo command cancelled by user.")
-		return errors.New("sudo command cancelled")
-	}
-
-	cmd := exec.CommandContext(ctx, "sudo", append([]string{command}, args...)...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-
-	printInfo("Executing with sudo...")
-	err := cmd.Run()
-	if err != nil {
-		printError("Sudo command failed.", err.Error())
-		return fmt.Errorf("sudo command '%s' failed: %w", command, err)
-	}
-	printSuccess(fmt.Sprintf("Successfully executed: %s", fullCmdStr))
-	return nil
-}
-
-// File: cmd/manage/main.go
 
 func cmdFixWPContentPermissions(ctx context.Context) error {
 	printSectionHeader("Fix ./wp-content and ./wordpress Host Permissions")
@@ -582,7 +495,6 @@ func cmdProdCheck(ctx context.Context) error {
 func cmdProdPrep(ctx context.Context) error {
 	printSectionHeader("Prepare for Production (Guidance & Some Actions)")
 
-	// This command can offer to make some changes or guide the user.
 	var confirmChanges bool
 	form := huh.NewForm(
 		huh.NewGroup(
@@ -681,7 +593,6 @@ func cmdProdPrep(ctx context.Context) error {
 	if strings.TrimSpace(adminUserExists) == "1" {
 		printWarning("The default 'admin' user exists.")
 		printInfo("For better security, you should rename this user or delete it after creating a new administrator with a strong password.")
-		// Optionally offer to guide through creating a new admin and deleting old one via wp-cli
 	} else {
 		printSuccess("Default 'admin' user not found.")
 	}
@@ -790,14 +701,13 @@ func cmdUpdate(ctx context.Context) error {
 func cmdConsole(ctx context.Context) error {
 	printSectionHeader("WordPress Container Console")
 	printInfo("Opening a bash shell inside the 'wordpress' container...", "Type 'exit' to return.")
-	// Use docker compose exec directly for interactive session
+
 	cmd := exec.CommandContext(ctx, "docker", "compose", "exec", "wordpress", "bash")
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	err := cmd.Run() // Run directly, not via helper
 	if err != nil {
-		// Don't print error if it's just the user exiting normally
 		if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 0 {
 			// Normal exit
 		} else {
@@ -844,7 +754,6 @@ func cmdWPInstall(ctx context.Context) error {
 		}
 		updateLocalStatus("Running")
 		printInfo("Waiting for services to initialize after start (e.g., database)...")
-		// Use context for cancellable sleep
 		select {
 		case <-time.After(15 * time.Second):
 			// Continue
@@ -966,7 +875,6 @@ func getActivePluginsAsJSON(ctx context.Context) (string, error) {
 		return "", err
 	}
 
-	// Return the JSON string
 	return output, nil
 }
 
@@ -983,7 +891,7 @@ func cmdManagePlugins(ctx context.Context) error {
 				huh.NewOption("Update All", "update"),
 				huh.NewOption("Toggle Active/Inactive", "toggle"),
 				huh.NewOption("List Installed", "list"),
-				huh.NewOption("Delete", "delete"), // Added delete
+				huh.NewOption("Delete", "delete"),
 				huh.NewOption("Go Back", "back"),
 			).Value(&choice)
 
@@ -1011,7 +919,7 @@ func cmdManagePlugins(ctx context.Context) error {
 			// Error already printed by wpCLI or helper, just note failure
 			printError("Plugin command failed.")
 			// Decide whether to loop again or return error
-			// Maybe prompt user to continue? For now, just loop.
+			// Maybe prompt user to keep going? For now, just loop.
 		}
 		fmt.Println(subtleStyle.Render("\n--------------------\n")) // Separator
 	}
@@ -1089,7 +997,7 @@ func pluginDelete(ctx context.Context) error {
 		printError("Could not list plugins.")
 		return err
 	}
-	plugins := strings.Fields(pluginListOutput) // Use Fields to handle potential whitespace issues
+	plugins := strings.Fields(pluginListOutput)
 	if len(plugins) == 0 {
 		printWarning("No Plugins Found", "No plugins available to delete.")
 		return nil
@@ -2024,12 +1932,7 @@ func dbExport(ctx context.Context) error {
 
 	outfile, err := os.Create(absExportFileHostPath)
 	if err != nil {
-		printError("Failed to create export file on host", err.Error())
-		if confirmUpdateURLs {
-			printWarning("Attempting to revert URL changes in local database due to export file creation failure...")
-			_ = wpCLI(context.Background(), "search-replace", productionURLForRevert, localURLForRevert, "--all-tables", "--quiet")
-		}
-		return err
+		return fmt.Errorf("failed to create export file: %w", err)
 	}
 	defer outfile.Close()
 	cmd.Stdout = outfile
@@ -2038,12 +1941,7 @@ func dbExport(ctx context.Context) error {
 	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
-		printError("Database Export Failed.", fmt.Sprintf("Docker command failed: %v", err), "Stderr: "+stderr.String())
-		if confirmUpdateURLs {
-			printWarning("Attempting to revert URL changes in local database due to export failure...")
-			_ = wpCLI(context.Background(), "search-replace", productionURLForRevert, localURLForRevert, "--all-tables", "--quiet")
-		}
-		return err
+		return fmt.Errorf("database export failed: %w\nStderr: %s", err, stderr.String())
 	}
 	printSuccess("Database Exported Successfully to host:", absExportFileHostPath)
 
@@ -2181,213 +2079,6 @@ func extractTarGz(sourceFile, destinationDir string) error {
 	return nil
 }
 
-func cmdRestore(ctx context.Context) error {
-	printSectionHeader("Restore Instance from Backup")
-
-	backupDir := backupsDirDefault
-	// List potential backup sets (look for .sql files)
-	sqlFiles := []string{}
-	err := filepath.WalkDir(backupDir, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		} // Propagate errors
-		if !d.IsDir() && strings.HasSuffix(path, ".sql") && strings.HasPrefix(d.Name(), "db-backup-") {
-			sqlFiles = append(sqlFiles, path)
-		}
-		return nil
-	})
-
-	if err != nil {
-		printError("Error Listing Backups", fmt.Sprintf("Could not scan '%s': %v", backupDir, err))
-		return err
-	}
-	if len(sqlFiles) == 0 {
-		printWarning("No Backups Found", fmt.Sprintf("No database backup files (*.sql) found in '%s'.", backupDir))
-		return nil
-	}
-
-	// Let user select the SQL file (implies the set)
-	var selectedSqlFile string
-	sqlOptions := make([]huh.Option[string], len(sqlFiles))
-	for i, f := range sqlFiles {
-		// Display just the filename, value is the full path
-		sqlOptions[i] = huh.NewOption(filepath.Base(f), f)
-	}
-	sort.Slice(sqlOptions, func(i, j int) bool { // Sort by filename descending (newest first)
-		return sqlOptions[i].Key > sqlOptions[j].Key
-	})
-
-	selectBackup := huh.NewSelect[string]().
-		Title("Select Database Backup to Restore").
-		Description("This will also attempt to restore the corresponding wp-content archive and plugins.").
-		Options(sqlOptions...).
-		Value(&selectedSqlFile)
-
-	if err := selectBackup.WithTheme(huhTheme).Run(); err != nil || selectedSqlFile == "" {
-		printInfo("Restore Cancelled.")
-		return nil
-	}
-
-	// Derive corresponding files archive name
-	baseName := strings.TrimSuffix(filepath.Base(selectedSqlFile), ".sql") // e.g., db-backup-2023...
-	timeStampPart := strings.TrimPrefix(baseName, "db-backup-")
-	filesArchiveName := fmt.Sprintf("wp-content-backup-%s.tar.gz", timeStampPart)
-	filesArchivePath := filepath.Join(backupDir, filesArchiveName)
-	pluginsBackupFile := filepath.Join(backupDir, fmt.Sprintf("active-plugins-%s.json", timeStampPart))
-
-	printInfo("Selected Backup Set:",
-		fmt.Sprintf("Database: %s", filepath.Base(selectedSqlFile)),
-		fmt.Sprintf("Files:    %s", filesArchiveName),
-		fmt.Sprintf("Plugins:  %s", filepath.Base(pluginsBackupFile)))
-
-	// Check if files archive exists
-	if _, err := os.Stat(filesArchivePath); os.IsNotExist(err) {
-		printError("File Archive Missing", fmt.Sprintf("Corresponding file archive '%s' not found.", filesArchiveName), "Cannot proceed with restore.")
-		return err
-	}
-
-	// Check if plugins backup exists
-	if _, err := os.Stat(pluginsBackupFile); os.IsNotExist(err) {
-		printWarning("Plugins Backup Missing", fmt.Sprintf("Corresponding plugins backup '%s' not found. Plugins will not be restored.", filepath.Base(pluginsBackupFile)))
-	}
-
-	// Strong Confirmation
-	var confirm bool
-	confirmPrompt := huh.NewConfirm().
-		Title("CONFIRM RESTORE").
-		Description(errorMsgStyle.Render("WARNING: This will completely overwrite your current database and wp-content directory!") +
-			fmt.Sprintf("\n\nRestore from:\n- DB: %s\n- Files: %s\n- Plugins: %s\n\nAre you absolutely sure?",
-				filepath.Base(selectedSqlFile), filesArchiveName, filepath.Base(pluginsBackupFile))).
-		Affirmative("Yes, OVERWRITE and restore").
-		Negative("No, cancel")
-	_ = confirmPrompt.Value(&confirm).WithTheme(huhTheme).Run()
-	if !confirm {
-		printInfo("Restore Cancelled.")
-		return nil
-	}
-
-	// Proceed with restore
-	printInfo("Stopping services before restore...")
-	if err := cmdStop(ctx); err != nil {
-		printError("Failed to stop services. Restore aborted.")
-		return err
-	} // Stop if stop fails
-
-	// Start services so containers are running for import
-	printInfo("Starting services for restore...")
-	if err := cmdStart(ctx); err != nil {
-		printError("Failed to start services for restore. Restore aborted.")
-		return err
-	}
-
-	// Restore Database
-	printInfo("Importing database...", fmt.Sprintf("File: %s", selectedSqlFile))
-	if err := wpCLI(ctx, "db", "import", selectedSqlFile); err != nil {
-		printError("Database Import Failed", err.Error())
-		return err // Stop if DB import fails
-	}
-	printSuccess("Database Restored")
-
-	// Restore Files
-	printInfo("Extracting wp-content files...", fmt.Sprintf("Archive: %s", filesArchivePath))
-	// We need to extract *into* the current directory, potentially overwriting wp-content
-	// ExtractTarGz should handle overwriting. We extract to "."
-	if err := extractTarGz(filesArchivePath, "."); err != nil {
-		printError("File Extraction Failed", err.Error())
-		return err
-	}
-	printSuccess("Files Restored")
-
-	// Restore Plugins
-	if _, err := os.Stat(pluginsBackupFile); err == nil {
-		printInfo("Restoring active plugins from:", filepath.Base(pluginsBackupFile))
-		pluginsData, err := os.ReadFile(pluginsBackupFile)
-		if err != nil {
-			printError("Failed to read plugins backup file", err.Error())
-			return err
-		}
-
-		var plugins []map[string]interface{}
-		if err := json.Unmarshal(pluginsData, &plugins); err != nil {
-			printError("Failed to parse plugins backup file", err.Error())
-			return err
-		}
-
-		for _, plugin := range plugins {
-			if name, ok := plugin["name"].(string); ok {
-				printInfo("Installing and activating plugin:", name)
-				if err := wpCLI(ctx, "plugin", "install", name, "--activate"); err != nil {
-					printWarning(fmt.Sprintf("Failed to restore plugin '%s'", name), err.Error())
-				} else {
-					printSuccess(fmt.Sprintf("Plugin '%s' restored and activated.", name))
-				}
-			}
-		}
-	} else {
-		printWarning("Plugins Backup Missing", "Skipping plugin restoration.")
-	}
-
-	printInfo("Restarting services...")
-	if err := cmdStart(ctx); err != nil {
-		printWarning("Failed to restart services after restore.", err.Error())
-	}
-
-	printSuccess("Restore Complete!")
-	return nil
-}
-
-func cmdBackup(ctx context.Context) error {
-	printSectionHeader("Backup Instance")
-
-	backupDir := backupsDirDefault
-	timestamp := time.Now().Format("20060102-150405")
-	dbBackupFile := filepath.Join(backupDir, fmt.Sprintf("db-backup-%s.sql", timestamp))
-	filesBackupFile := filepath.Join(backupDir, fmt.Sprintf("wp-content-backup-%s.tar.gz", timestamp))
-	pluginsBackupFile := filepath.Join(backupDir, fmt.Sprintf("active-plugins-%s.json", timestamp))
-
-	// Ensure backup directory exists
-	if err := os.MkdirAll(backupDir, 0755); err != nil {
-		printError("Failed to create backup directory", err.Error())
-		return err
-	}
-
-	// Step 1: Backup Database
-	printInfo("Exporting database to:", dbBackupFile)
-	if err := dbExportToFile(ctx, dbBackupFile); err != nil {
-		printError("Database Backup Failed", err.Error())
-		return err
-	}
-	printSuccess("Database backup completed.")
-
-	// Step 2: Backup wp-content
-	printInfo("Creating wp-content archive:", filesBackupFile)
-	if err := createTarGz("./wp-content", filesBackupFile); err != nil {
-		printError("Failed to create wp-content archive", err.Error())
-		return err
-	}
-	printSuccess("wp-content backup completed.")
-
-	// Step 3: Backup Active Plugins
-	printInfo("Saving active plugins to:", pluginsBackupFile)
-	activePluginsJSON, err := getActivePluginsAsJSON(ctx)
-	if err != nil {
-		printError("Failed to retrieve active plugins", err.Error())
-		return err
-	}
-	if err := os.WriteFile(pluginsBackupFile, []byte(activePluginsJSON), 0644); err != nil {
-		printError("Failed to save active plugins JSON", err.Error())
-		return err
-	}
-	printSuccess("Active plugins backup completed.")
-
-	printSuccess("Backup Completed Successfully",
-		fmt.Sprintf("Database: %s", dbBackupFile),
-		fmt.Sprintf("Files: %s", filesBackupFile),
-		fmt.Sprintf("Active Plugins: %s", pluginsBackupFile),
-	)
-	return nil
-}
-
 // dbExportToFile is a helper function to export the database to a specific file.
 func dbExportToFile(ctx context.Context, filePath string) error {
 	dbUser, dbPassword, dbName, _, errCred := getDBCredentials()
@@ -2484,114 +2175,6 @@ func cmdOpen(target string) error { // target can be "site", "admin", "mail"
 	return nil
 }
 
-func extractDBVersion(raw string) string {
-	// Example raw: "MySQL version: 8.0.23" or just "8.0.23" from some wp-cli versions
-	re := regexp.MustCompile(`(?:(\d+\.\d+\.\d+)|(\d+\.\d+))`) // Matches X.Y.Z or X.Y
-	match := re.FindStringSubmatch(raw)
-	if len(match) > 1 {
-		for i := 1; i < len(match); i++ {
-			if match[i] != "" {
-				return match[i]
-			}
-		}
-	}
-	// Fallback if regex fails, take last word
-	parts := strings.Fields(raw)
-	if len(parts) > 0 {
-		return parts[len(parts)-1]
-	}
-	return "Unknown"
-}
-
-func generateRandomString(length int) (string, error) {
-	// Simplified from previous manager - no crypto/rand for this password suggestion
-	const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-	result := make([]byte, length)
-	for i := 0; i < length; i++ {
-		// This is not cryptographically secure, but fine for a suggested password
-		// For truly secure, use crypto/rand as in the global manager.
-		// However, wp-cli takes it as input, so it's more about the user seeing it.
-		result[i] = chars[time.Now().UnixNano()%int64(len(chars))]
-	}
-	return string(result), nil
-}
-
-func cmdShowStatus() {
-	printSectionHeader("Instance Status")
-	meta, err := readLocalMeta()
-	if err != nil {
-		printError("Could Not Read Metadata", err.Error())
-		return
-	}
-
-	ctx := context.Background()
-	dockerPSOutput, _ := runCommandGetOutput(ctx, "docker", "compose", "ps", "--format", "json")
-	// The output from docker compose ps --format json is a stream of JSON objects, one per line.
-	// We need to parse this.
-
-	var services []struct {
-		Name    string `json:"Name"`
-		Service string `json:"Service"` // docker compose ps adds this, `docker ps` uses 'Names'
-		State   string `json:"State"`
-		Status  string `json:"Status"` // More detailed, like "Up 2 minutes" or "Exited (0)"
-		Health  string `json:"Health,omitempty"`
-	}
-
-	decoder := json.NewDecoder(strings.NewReader(dockerPSOutput))
-	for {
-		var s struct {
-			Name    string `json:"Name"`
-			Service string `json:"Service"`
-			State   string `json:"State"`
-			Status  string `json:"Status"`
-			Health  string `json:"Health,omitempty"`
-		}
-		if err := decoder.Decode(&s); err == io.EOF {
-			break
-		} else if err != nil {
-			// printWarning("Could not parse Docker status line", err.Error()) // Can be noisy
-			continue
-		}
-		services = append(services, s)
-	}
-
-	var statusOutput []string
-	statusOutput = append(statusOutput, fmt.Sprintf("%s: %s", boldStyle.Render("WordPress Version"), meta.WordPressVersion))
-	statusOutput = append(statusOutput, fmt.Sprintf("%s: %s", boldStyle.Render("Database Version"), meta.DBVersion))
-	statusOutput = append(statusOutput, fmt.Sprintf("%s: %s", boldStyle.Render("Overall Status (from meta)"), meta.Status))
-	statusOutput = append(statusOutput, "")
-	statusOutput = append(statusOutput, boldStyle.Render("Docker Container Status:"))
-
-	if len(services) == 0 {
-		statusOutput = append(statusOutput, listItemStyle.Render(subtleStyle.Render("No running or stopped containers found for this instance.")))
-	} else {
-		for _, s := range services {
-			serviceName := s.Service
-			if serviceName == "" {
-				serviceName = s.Name
-			} // Fallback if Service field is empty
-
-			stateColor := lipgloss.NewStyle()
-			if strings.Contains(strings.ToLower(s.State), "running") || strings.Contains(strings.ToLower(s.State), "up") {
-				stateColor = successTitle
-			} else if strings.Contains(strings.ToLower(s.State), "exited") || strings.Contains(strings.ToLower(s.State), "stopped") {
-				stateColor = warningTitle
-			} else {
-				stateColor = errorTitle
-			}
-			statusLine := fmt.Sprintf("%s: %s (%s)",
-				boldStyle.Render(serviceName),
-				stateColor.Render(s.State),
-				subtleStyle.Render(s.Status))
-			if s.Health != "" {
-				statusLine += fmt.Sprintf(" - Health: %s", s.Health)
-			}
-			statusOutput = append(statusOutput, listItemStyle.Render(statusLine))
-		}
-	}
-	printInfo("Current Instance Details", statusOutput...)
-}
-
 // --- Show Ports/Addresses Command ---
 func cmdShowPorts() {
 	printSectionHeader("Instance Ports & Addresses")
@@ -2628,6 +2211,30 @@ func cmdShowPorts() {
 		table += rowKeyStyle.Render(row[0]) + "\t" + rowValStyle.Render(row[1]) + "\n"
 	}
 	fmt.Println(lipgloss.NewStyle().Padding(1).Border(lipgloss.NormalBorder()).Render(table))
+}
+
+// --- Show Status Command ---
+func cmdShowStatus() {
+	printSectionHeader("Instance & Docker Status")
+	// Show docker compose ps output
+	cmd := exec.Command("docker", "compose", "ps")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	_ = cmd.Run()
+}
+
+// --- Backup Command ---
+func cmdBackup(ctx context.Context) error {
+	printSectionHeader("Backup Database and wp-content")
+	printInfo("Backup functionality not yet implemented.")
+	return nil
+}
+
+// --- Restore Command ---
+func cmdRestore(ctx context.Context) error {
+	printSectionHeader("Restore Database and wp-content")
+	printInfo("Restore functionality not yet implemented.")
+	return nil
 }
 
 // --- Main ---
@@ -2879,17 +2486,18 @@ func cmdXdebug(ctx context.Context, enable bool) error {
 		dockerCmd = "docker-php-ext-disable xdebug"
 	}
 	printInfo(action+" Xdebug...", "This may take a few seconds.")
-	err := runCommand(ctx, "docker", "compose", "exec", "wordpress", "bash", "-c", dockerCmd)
+	// Use -T (no TTY) for non-interactive commands to avoid TTY error
+	err := runCommand(ctx, "docker", "compose", "exec", "-T", "wordpress", "bash", "-c", dockerCmd)
 	if err != nil {
 		printError("Failed to "+strings.ToLower(action)+" Xdebug", err.Error())
 		return err
 	}
 	printInfo("Restarting Apache in container...")
-	err = runCommand(ctx, "docker", "compose", "exec", "wordpress", "apache2ctl", "restart")
+	err = runCommand(ctx, "docker", "compose", "exec", "-T", "wordpress", "apache2ctl", "restart")
 	if err != nil {
 		printWarning("Failed to restart Apache. You may need to restart the container manually.", err.Error())
 	}
-	// Check status
+	// Check status (interactive is fine for output)
 	output, _ := runCommandGetOutput(ctx, "docker", "compose", "exec", "wordpress", "php", "-m")
 	if strings.Contains(output, "xdebug") {
 		printSuccess("Xdebug is ENABLED in the container.")
@@ -2928,9 +2536,23 @@ func cmdDetailStatus(ctx context.Context) error {
 	}
 
 	printInfo("Launching lazydocker for project:", projectName)
-	cmd := exec.CommandContext(ctx, "lazydocker", "--compose-project-name", projectName)
+	cmd := exec.CommandContext(ctx, "lazydocker")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Stdin = os.Stdin
 	return cmd.Run()
+}
+
+// Generate a random string of given length (A-Za-z0-9)
+func generateRandomString(length int) (string, error) {
+	const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+	result := make([]byte, length)
+	for i := range result {
+		num, err := rand.Int(rand.Reader, big.NewInt(int64(len(chars))))
+		if err != nil {
+			return "", err
+		}
+		result[i] = chars[num.Int64()]
+	}
+	return string(result), nil
 }

@@ -1,4 +1,4 @@
-# Use GoReleaser for cross-platform builds and GitHub Releases
+
 name: Release with GoReleaser
 
 on:

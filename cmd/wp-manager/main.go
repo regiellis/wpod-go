@@ -1,5 +1,5 @@
 /*
- * wpod - WordPress management tool
+ * WPOD // Wordpress Development & Management Tool
  * Copyright (C) 2025 Regi E
  *
  * This program is free software: you can redistribute it and/or modify
@@ -60,9 +60,15 @@ const (
 	defaultMailpitWeb    = 8025
 )
 
+var jsonInput string
+var jsonFile string
+var jsonOutput bool
+
 // Initialize theme in init()
 func init() {
 	flag.BoolVar(&useLightTheme, "light", false, "Use light theme for light terminal backgrounds (toggle off with --light=false)")
+	flag.StringVar(&jsonInput, "json", "", "JSON string for non-interactive instance creation")
+	flag.StringVar(&jsonFile, "json-file", "", "Path to JSON file for non-interactive instance creation")
 }
 
 // Function to load theme preference from global config
@@ -214,7 +220,6 @@ func getConfigStorageDir() (string, error) {
 	if err != nil {
 		fallbackDir := ".wpod-data" // Fallback to a local directory in CWD
 		// Only print warning once if multiple calls hit this fallback
-		// This could be improved with a global flag if necessary
 		if _, errStat := os.Stat(fallbackDir); os.IsNotExist(errStat) {
 			printWarning("User config directory not found, using fallback directory in current path.", fallbackDir, err.Error())
 		}
@@ -447,7 +452,7 @@ func configShow() {
 	} else {
 		printInfo(infoMsgStyle.Render("Sites Base Directory:"), commandStyle.Render(config.SitesBaseDirectory))
 	}
-	// Add display for other global settings here if any
+
 }
 
 func configGet(key string) {
@@ -544,7 +549,7 @@ func (fl *FileLock) Lock() error {
 	if err != nil {
 		return fmt.Errorf("lock exists or creation failed: %w", err)
 	}
-	return f.Close() // Close immediately, existence is the lock
+	return f.Close()
 }
 func (fl *FileLock) Unlock() error { return os.Remove(fl.path) }
 
@@ -581,19 +586,12 @@ func parseEnvValue(envContent []byte, key string) string {
 
 // Add this function
 func getModulePath() (string, error) {
-	// This assumes 'go' executable is in PATH and the command is run
-	// from within a directory that is part of a Go module, or a subdirectory.
-	// For 'wpod', it should be run from the project root ideally.
+
 	cmd := exec.Command("go", "list", "-m")
 	var out bytes.Buffer
 	var stderr bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &stderr
-
-	// If wpod is run from a different directory than the project root,
-	// you might need to set cmd.Dir to the project root.
-	// Discovering the project root programmatically can be complex if not run from there.
-	// For now, we assume it's run in a context where 'go list -m' works for the project.
 
 	err := cmd.Run()
 	if err != nil {
@@ -719,7 +717,7 @@ func createInstance() {
 
 		info, errStat := os.Stat(targetBaseDirFromConfig)
 		if os.IsNotExist(errStat) {
-			printWarning(fmt.Sprintf("Configured sites base directory '%s' does not exist yet.", targetBaseDirFromConfig))
+			printWarning(fmt.Sprintf("Configured sites base directory '%s' does not exist.", targetBaseDirFromConfig))
 			var confirmUseAndCreatePath bool
 			form := huh.NewForm(
 				huh.NewGroup(
@@ -988,7 +986,10 @@ func createInstance() {
 					Value(&customPorts),
 			),
 		).WithTheme(theme)
-		_ = form.Run()
+		if errRun := form.Run(); errRun != nil {
+			printError("Input cancelled.", errRun.Error())
+			return
+		}
 		if customPorts {
 			var httpPortStr, httpsPortStr string
 			form := huh.NewForm(
@@ -1225,9 +1226,9 @@ func createInstance() {
 	printSuccess("Template Files Copied", fmt.Sprintf("Copied files (incl. '%s') to %s", manageBinaryNameInProject, fullInstanceName))
 
 	envFilePath := filepath.Join(fullInstanceName, ".env")
-	envTemplatePathInInstance := filepath.Join(fullInstanceName, envTemplateFileName)
+	envTemplatePathInInstance := filepath.Join(fullInstanceName, envTemplateFileName) // fix: no dot
 	if _, err := os.Stat(envTemplatePathInInstance); os.IsNotExist(err) {
-		printError(fmt.Sprintf("'%s' Missing", envTemplateFileName), fmt.Sprintf("%s not found after copy.", envTemplatePathInInstance))
+		printError("'env-template' Missing", fmt.Sprintf("%s not found after copy.", envTemplatePathInInstance))
 		os.RemoveAll(fullInstanceName)
 		return
 	}
@@ -1404,6 +1405,26 @@ func createInstance() {
 	}
 	printSuccess("🎉 Instance Created Successfully!", successDetails...)
 
+	if jsonOutput {
+		output := map[string]interface{}{
+			"name":              instanceNameBase,
+			"directory":         fullInstanceName,
+			"wordpress_port":    wordpressPort,
+			"dev_hostname":      devHostName,
+			"mailpit_web_port":  mailpitWebPort,
+			"mailpit_smtp_port": mailpitSMTPPort,
+			"adminer_web_port":  adminerWebPort,
+			"caddy_enabled":     caddyEnabled,
+			"caddy_http_port":   caddyHTTPPort,
+			"caddy_https_port":  caddyHTTPSPort,
+			"wordpress_version": WORDPRESS_VERSION,
+			"created":           time.Now().Format("2006-01-02 15:04:05"),
+		}
+		b, _ := json.MarshalIndent(output, "", "  ")
+		fmt.Println(string(b))
+		return
+	}
+
 	promptAndStartInstance(fullInstanceName)
 
 	// --- Copy and Patch docker-compose.yml ---
@@ -1416,7 +1437,7 @@ func createInstance() {
 		return
 	}
 	if !caddyEnabled {
-		// Add 'profiles: [donotstart]' to the Caddy service block
+		// Patch docker-compose.yml: ensure caddy's profiles includes 'donotstart', but do not duplicate the key
 		lines := strings.Split(string(dockerComposeContent), "\n")
 		var newLines []string
 		inCaddy := false
@@ -1429,19 +1450,43 @@ func createInstance() {
 				continue
 			}
 			if inCaddy {
-				// Insert profiles after container_name or restart (if not already present)
-				if strings.HasPrefix(trimmed, "container_name:") || strings.HasPrefix(trimmed, "restart:") {
-					newLines = append(newLines, line)
-					// Check if next line is already profiles
-					if i+1 < len(lines) && strings.TrimSpace(lines[i+1]) == "profiles:" {
-						// Already present, skip
-						continue
+				if strings.HasPrefix(trimmed, "profiles:") {
+					// Check if 'donotstart' is already present in the list
+					profilesLine := line
+					var profilesBlock []string
+					profilesBlock = append(profilesBlock, profilesLine)
+					// Collect all indented lines under 'profiles:'
+					for j := i + 1; j < len(lines); j++ {
+						nextLine := lines[j]
+						if strings.HasPrefix(nextLine, "      - ") {
+							profilesBlock = append(profilesBlock, nextLine)
+						} else {
+							break
+						}
 					}
-					// Insert profiles
-					newLines = append(newLines, "    profiles:", "      - donotstart")
+					// Check if donotstart is present
+					donotstartPresent := false
+					for _, pl := range profilesBlock {
+						if strings.Contains(pl, "donotstart") {
+							donotstartPresent = true
+							break
+						}
+					}
+					if !donotstartPresent {
+						// Insert '      - donotstart' after 'profiles:'
+						newLines = append(newLines, profilesBlock[0])
+						newLines = append(newLines, "      - donotstart")
+						if len(profilesBlock) > 1 {
+							newLines = append(newLines, profilesBlock[1:]...)
+						}
+					} else {
+						newLines = append(newLines, profilesBlock...)
+					}
+					// Skip the lines we just processed
+					i += len(profilesBlock) - 1
 					continue
 				}
-				// End of service block is when we hit a non-indented line or another top-level service
+				// End of caddy service block: next top-level service or outdent
 				if len(line) > 0 && !strings.HasPrefix(line, " ") && !strings.HasPrefix(line, "\t") {
 					inCaddy = false
 				}
@@ -1510,7 +1555,7 @@ func deleteInstance() {
 		printError("Internal Error", fmt.Sprintf("Selected instance '%s' not found in metadata map.", instanceToDelete))
 		return
 	}
-	instancePath := selectedMeta.Directory // Use the stored directory path
+	instancePath := selectedMeta.Directory
 
 	// Confirmation prompt
 	var confirmDelete bool
@@ -1519,7 +1564,7 @@ func deleteInstance() {
 		Description(lipgloss.JoinVertical(lipgloss.Left,
 			fmt.Sprintf("Instance directory: %s", commandStyle.Render(instancePath)), // Show path
 			"", // Add spacing
-			errorMsgStyle.Render("This action is irreversible!"), // Use error style for warning
+			errorMsgStyle.Render("This action is irreversible!"),
 			"It will:",
 			"  - Stop and remove associated Docker containers.",
 			"  - Delete all data volumes for this instance.",
@@ -1549,13 +1594,13 @@ func deleteInstance() {
 		} else {
 			printSuccess("Instance removed from manager list.")
 		}
-		return // Exit deletion process
+		return
 	}
 
 	// Stop Docker containers
 	printInfo(fmt.Sprintf("Stopping Docker containers for %s...", instanceToDelete))
 	cmd := exec.Command("docker", "compose", "down", "--volumes", "--remove-orphans")
-	cmd.Dir = instancePath // IMPORTANT: Run docker compose in the instance directory
+	cmd.Dir = instancePath
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
@@ -1616,7 +1661,7 @@ func deleteInstance() {
 	if err := writeManagerMeta(managerMeta); err != nil {
 		printError("Failed to Update Manager Metadata", err.Error())
 	} else {
-		printSuccess("Instance Removed", fmt.Sprintf("Successfully removed instance '%s' from manager list.", instanceToDelete))
+		printSuccess("Instance Unregistered", fmt.Sprintf("Successfully removed instance '%s' from manager list.", instanceToDelete))
 	}
 } // End of deleteInstance
 
@@ -1686,7 +1731,7 @@ func updateStatuses() {
 				if readErr != nil {
 					printWarning(fmt.Sprintf("Local Meta Read Error for %s", instanceName), fmt.Sprintf("Could not update local status: %v", readErr))
 				} else {
-					localMeta.Status = newStatus // Only update the status field
+					localMeta.Status = newStatus
 					if writeErr := writeInstanceMeta(instancePath, localMeta); writeErr != nil {
 						printWarning(fmt.Sprintf("Local Meta Write Error for %s", instanceName), fmt.Sprintf("Could not update local status: %v", writeErr))
 					}
@@ -1721,6 +1766,25 @@ func renderStatus(status string) string {
 	}
 }
 
+func isWordPressContainerRunning(instanceDir string) bool {
+	metaPath := filepath.Join(instanceDir, ".wordpress-meta.json")
+	metaData, err := os.ReadFile(metaPath)
+	if err != nil {
+		return false
+	}
+	var meta InstanceMeta
+	if err := json.Unmarshal(metaData, &meta); err != nil {
+		return false
+	}
+	containerName := "wp-" + filepath.Base(instanceDir)
+	cmd := exec.Command("docker", "ps", "--filter", "name="+containerName, "--format", "{{.Names}}")
+	output, err := cmd.Output()
+	if err != nil {
+		return false
+	}
+	return strings.Contains(string(output), containerName)
+}
+
 func listInstances() {
 	printSectionHeader("List WordPress Instances")
 
@@ -1741,18 +1805,18 @@ func listInstances() {
 	nameWidth := 30
 	portWidth := 8
 	dateWidth := 20
-	wpVerWidth := 15 // Keep this
-	dbVerWidth := 15 // Keep this
+	wpVerWidth := 15
+	dbVerWidth := 15
 	statusWidth := 18
 	dirWidth := 50
 
-	// Header row - UNCOMMENT WP Ver and DB Ver headers
+	// Header row -
 	header := lipgloss.JoinHorizontal(lipgloss.Top,
 		tableHeaderStyle.Width(nameWidth).Render("Instance Name"),
 		tableHeaderStyle.Width(portWidth).Render("Port"),
 		tableHeaderStyle.Width(dateWidth).Render("Created"),
-		tableHeaderStyle.Width(wpVerWidth).Render("WP Ver"), // Uncommented
-		tableHeaderStyle.Width(dbVerWidth).Render("DB Ver"), // Uncommented
+		tableHeaderStyle.Width(wpVerWidth).Render("WP Ver"),
+		tableHeaderStyle.Width(dbVerWidth).Render("DB Ver"),
 		tableHeaderStyle.Width(dirWidth).Render("Directory"),
 		tableHeaderStyle.Width(statusWidth).Render("Status"),
 	)
@@ -1775,14 +1839,23 @@ func listInstances() {
 
 		displayDir := shortenPath(meta.Directory, dirWidth-3)
 
+		// --- Live status check ---
+		status := meta.Status
+		if _, err := os.Stat(meta.Directory); err == nil {
+			if isWordPressContainerRunning(meta.Directory) {
+				status = "Running"
+			} else {
+				status = "Stopped"
+			}
+		}
+
 		rowCells = append(rowCells, tableCellStyle.Width(nameWidth).Render(instanceName))
 		rowCells = append(rowCells, tableCellStyle.Width(portWidth).Render(strconv.Itoa(meta.WordPressPort)))
 		rowCells = append(rowCells, tableCellStyle.Width(dateWidth).Render(meta.CreationDate))
-		// UNCOMMENTED: Add WP Ver and DB Ver cells back
 		rowCells = append(rowCells, tableCellStyle.Width(wpVerWidth).Render(wpVer))
 		rowCells = append(rowCells, tableCellStyle.Width(dbVerWidth).Render(dbVer))
 		rowCells = append(rowCells, tableCellStyle.Width(dirWidth).Render(displayDir))
-		rowCells = append(rowCells, tableCellStyle.Width(statusWidth).Render(renderStatus(meta.Status)))
+		rowCells = append(rowCells, tableCellStyle.Width(statusWidth).Render(renderStatus(status)))
 
 		rows = append(rows, lipgloss.JoinHorizontal(lipgloss.Top, rowCells...))
 	}
@@ -1792,7 +1865,6 @@ func listInstances() {
 
 // Helper function to shorten paths for display (keep this)
 func shortenPath(path string, maxLen int) string {
-	// ... (implementation remains the same) ...
 	if len(path) <= maxLen {
 		return path
 	}
@@ -2042,8 +2114,11 @@ func registerInstance() {
 				Value(&portStr).
 				Validate(func(s string) error {
 					p, errV := strconv.Atoi(s)
-					if errV != nil || p <= 0 || p > 65535 {
+					if errV != nil {
 						return errors.New("invalid port")
+					}
+					if p <= 0 || p > 65535 {
+						return errors.New("port out of range")
 					}
 					return nil
 				})
@@ -2114,8 +2189,8 @@ func registerInstance() {
 			return
 		}
 		printWarning("Overwriting previous registration entry.")
-		// Note: If overwriting based on directory match, we might need to delete the old key first if the name is different.
-		// For simplicity now, we just overwrite/add with the *new* name.
+		// Note: If overwriting based on directory match, might need to delete the old key first if the name is different.
+		// For simplicity now,just overwrite/add with the *new* name.
 	}
 
 	// Add/Update the entry
@@ -2438,10 +2513,140 @@ func metaEdit() {
 	}
 }
 
-// In cmd/wp-manager/main.go
+// --- Jump Command: Convenience for changing directory ---
+func jumpCommand() {
+	config, err := readGlobalManagerConfig()
+	if err != nil {
+		printError("Could not read global config", err.Error())
+		return
+	}
+	var targetPath string
+	if config.SitesBaseDirectory != "" {
+		absPath, err := filepath.Abs(config.SitesBaseDirectory)
+		if err == nil {
+			targetPath = absPath
+		}
+	}
+	if targetPath == "" {
+		managerMeta, err := readManagerMeta()
+		if err == nil && len(managerMeta) > 0 {
+			var latest *InstanceMeta
+			for _, meta := range managerMeta {
+				if latest == nil || meta.CreationDate > latest.CreationDate {
+					latest = &meta
+				}
+			}
+			if latest != nil {
+				absPath, err := filepath.Abs(latest.Directory)
+				if err == nil {
+					targetPath = absPath
+				}
+			}
+		}
+	}
+	if targetPath == "" {
+		printWarning("No global sites base directory is set.")
+		var setNow bool
+		form := huh.NewForm(
+			huh.NewGroup(
+				huh.NewConfirm().
+					Title("Set a global sites base directory?").
+					Description("Would you like to set a default parent directory for new instances?").
+					Affirmative("Yes, set now").
+					Negative("No, skip").
+					Value(&setNow),
+			),
+		).WithTheme(theme)
+		form.Run()
+		if setNow {
+			var dir string
+			inputForm := huh.NewForm(
+				huh.NewGroup(
+					huh.NewInput().
+						Title("Sites Base Directory").
+						Description("Enter the path to use as the default parent directory for new instances.").
+						Value(&dir).
+						Validate(func(s string) error {
+							if s == "" {
+								return errors.New("path cannot be empty")
+							}
+							abs, err := filepath.Abs(s)
+							if err != nil {
+								return err
+							}
+							info, err := os.Stat(abs)
+							if os.IsNotExist(err) {
+								parent := filepath.Dir(abs)
+								if _, errP := os.Stat(parent); os.IsNotExist(errP) {
+									return fmt.Errorf("parent directory '%s' does not exist", parent)
+								}
+							} else if err != nil {
+								return err
+							} else if !info.IsDir() {
+								return fmt.Errorf("path '%s' exists but is not a directory", abs)
+							}
+							return nil
+						}),
+				),
+			).WithTheme(theme)
+			if err := inputForm.Run(); err == nil && dir != "" {
+				config.SitesBaseDirectory = dir
+				if err := writeGlobalManagerConfig(config); err == nil {
+					targetPath = dir
+				}
+			}
+		}
+	}
+	if targetPath == "" {
+		printInfo("No directory to jump to.")
+		return
+	}
+	// Actually launch a new shell in the target directory
+	printInfo("Jumping to:", targetPath)
+	var shellCmd *exec.Cmd
+	if runtime.GOOS == "windows" {
+		// Try powershell first, fallback to cmd
+		if pwsh, err := exec.LookPath("powershell.exe"); err == nil {
+			shellCmd = exec.Command(pwsh)
+		} else {
+			shellCmd = exec.Command("cmd.exe")
+		}
+		shellCmd.Dir = targetPath
+	} else {
+		shell := os.Getenv("SHELL")
+		if shell == "" {
+			shell = "/bin/sh"
+		}
+		shellCmd = exec.Command(shell)
+		shellCmd.Dir = targetPath
+	}
+	shellCmd.Stdin = os.Stdin
+	shellCmd.Stdout = os.Stdout
+	shellCmd.Stderr = os.Stderr
+	err = shellCmd.Run()
+	if err != nil {
+		printError("Failed to launch shell in target directory", err.Error())
+		fmt.Println("You can manually cd to:", targetPath)
+	}
+}
 
 func main() {
 	flag.Parse()
+	if jsonInput != "" || jsonFile != "" {
+		var data *InstanceCreateJSON
+		var err error
+		if jsonInput != "" {
+			data, err = parseInstanceCreateJSON(jsonInput)
+		} else {
+			data, err = loadInstanceCreateJSONFromFile(jsonFile)
+		}
+		if err != nil {
+			printError("Failed to parse JSON for instance creation", err.Error())
+			os.Exit(1)
+		}
+		createInstanceWithJSON(data)
+		return
+	}
 	// Remove --light from os.Args so it's not treated as a command
 	cleanArgs := []string{os.Args[0]}
 	for _, arg := range os.Args[1:] {
@@ -2484,42 +2689,90 @@ func main() {
 	}
 
 	if len(os.Args) < 2 {
-		fmt.Println(appTitleStyle.Render("WordPress Instance Manager")) // Print title before usage on no args
-		printUsage()                                                    // printUsage now calls os.Exit(1)
-		return                                                          // For clarity, though os.Exit will terminate
+		fmt.Println(appTitleStyle.Render("WPOD // Wordpress Development & Management Tool"))
+		printUsage()
+		return
 	}
 
 	action := strings.ToLower(os.Args[1])
 	args := os.Args[2:] // Arguments after the action
 
 	// Print title for actual commands being run
-	if action != "help" && action != "-h" && action != "--help" { // Don't double print for help
-		fmt.Println(appTitleStyle.Render("WordPress Instance Manager"))
+	if action != "help" && action != "-h" && action != "--help" {
+		fmt.Println(appTitleStyle.Render("WPOD // Wordpress Development & Management Tool"))
 	}
 
 	switch action {
 	case "create":
+		// Parse flags for create subcommand
+		createFlagSet := flag.NewFlagSet("create", flag.ExitOnError)
+		createFlagSet.StringVar(&jsonInput, "json", "", "JSON string for non-interactive instance creation")
+		createFlagSet.StringVar(&jsonFile, "json-file", "", "Path to JSON file for non-interactive instance creation")
+		createFlagSet.BoolVar(&jsonOutput, "json-output", false, "Output instance details as JSON after creation")
+		_ = createFlagSet.Parse(args)
+		if jsonInput != "" || jsonFile != "" {
+			var data *InstanceCreateJSON
+			var err error
+			if jsonInput != "" {
+				data, err = parseInstanceCreateJSON(jsonInput)
+			} else {
+				data, err = loadInstanceCreateJSONFromFile(jsonFile)
+			}
+			if err != nil {
+				printError("Failed to parse JSON for instance creation", err.Error())
+				os.Exit(1)
+			}
+			createInstanceWithJSON(data)
+			return
+		}
 		createInstance()
 	case "delete":
-		deleteInstance() // Remember to add .WithTheme(theme) to huh prompts inside
+		deleteFlagSet := flag.NewFlagSet("delete", flag.ExitOnError)
+		var deleteJSON string
+		var deleteJSONFile string
+		deleteFlagSet.StringVar(&deleteJSON, "json", "", "JSON string for non-interactive delete")
+		deleteFlagSet.StringVar(&deleteJSONFile, "json-file", "", "Path to JSON file for non-interactive delete")
+		deleteFlagSet.BoolVar(&jsonOutput, "json-output", false, "Output JSON after delete")
+		_ = deleteFlagSet.Parse(args)
+		if deleteJSON != "" || deleteJSONFile != "" {
+			var data map[string]interface{}
+			var err error
+			if deleteJSON != "" {
+				err = json.Unmarshal([]byte(deleteJSON), &data)
+			} else {
+				b, errRead := os.ReadFile(deleteJSONFile)
+				if errRead != nil {
+					printError("Failed to read JSON file for delete", errRead.Error())
+					os.Exit(1)
+				}
+				err = json.Unmarshal(b, &data)
+			}
+			if err != nil {
+				printError("Failed to parse JSON for delete", err.Error())
+				os.Exit(1)
+			}
+			deleteInstanceWithJSON(data)
+			return
+		}
+		deleteInstance()
 	case "update":
 		updateStatuses()
 	case "list":
 		listInstances()
 	case "doctor":
 		doctor()
-	case "config": // Added
+	case "config":
 		handleConfigCommand(args)
 	case "register":
-		registerInstance() // Remember to add .WithTheme(theme)
+		registerInstance()
 	case "unregister":
 		name := ""
 		if len(args) > 0 {
 			name = args[0]
 		}
-		unregisterInstance(name) // Remember to add .WithTheme(theme)
+		unregisterInstance(name)
 	case "prune":
-		pruneInstances() // Remember to add .WithTheme(theme)
+		pruneInstances()
 	case "locate":
 		name := ""
 		if len(args) > 0 {
@@ -2527,9 +2780,12 @@ func main() {
 		}
 		locateInstance(name)
 	case "meta":
-		handleMetaCommand(args) // Remember to add .WithTheme(theme) if metaEdit uses huh
+		handleMetaCommand(args)
+	case "jump", "cd":
+		jumpCommand()
+		return
 	case "help", "-h", "--help":
-		fmt.Println(appTitleStyle.Render("WordPress Instance Manager")) // Print title for help too
+		fmt.Println(appTitleStyle.Render("WordPress Instance Manager"))
 		printUsage()
 	default:
 		fmt.Println(appTitleStyle.Render("WordPress Instance Manager"))
@@ -2553,6 +2809,7 @@ func printUsage() {
 		fmt.Sprintf("  %s %s", commandStyle.Render("unregister <name>"), subtleStyle.Render("- Remove instance <name> from manager list (files untouched)")),
 		fmt.Sprintf("  %s %s", commandStyle.Render("prune"), subtleStyle.Render("- Check for & remove registrations of missing instance directories")),
 		fmt.Sprintf("  %s %s", commandStyle.Render("locate <name>"), subtleStyle.Render("- Print the directory path of registered instance <name>")),
+		fmt.Sprintf("  %s %s", commandStyle.Render("jump"), subtleStyle.Render("- Will jump to the project directory if set")),
 		fmt.Sprintf("  %s %s", commandStyle.Render("meta <subcommand>"), subtleStyle.Render("- Manage the central metadata file")),
 		fmt.Sprintf("      %s", commandStyle.Render("show [--json]")),
 		fmt.Sprintf("      %s", commandStyle.Render("edit")),
@@ -2701,4 +2958,353 @@ func listAvailableTemplatesWithMeta() ([]struct {
 		}
 	}
 	return available, nil
+}
+
+// --- Instance Creation JSON Schema ---
+// InstanceCreateJSON defines all options for JSON-driven instance creation.
+type InstanceCreateJSON struct {
+	InstanceName      string            `json:"instance_name"` // Required, sanitized
+	Template          string            `json:"template"`      // Required
+	WPUser            string            `json:"wp_user"`
+	WPPassword        string            `json:"wp_password"`
+	WPDBName          string            `json:"wp_db_name"`
+	MySQLRootPassword string            `json:"mysql_root_password"`
+	MailpitSMTPPort   int               `json:"mailpit_smtp_port"`
+	MailpitWebPort    int               `json:"mailpit_web_port"`
+	AdminerWebPort    int               `json:"adminer_web_port"`
+	CaddyEnabled      *bool             `json:"caddy_enabled,omitempty"`
+	CaddyHTTPPort     int               `json:"caddy_http_port"`
+	CaddyHTTPSPort    int               `json:"caddy_https_port"`
+	DevDomainSuffix   string            `json:"dev_domain_suffix"`
+	WordPressVersion  string            `json:"wordpress_version"`
+	Overwrite         bool              `json:"overwrite"`
+	ParentDirectory   string            `json:"parent_directory,omitempty"`
+	CustomSalts       map[string]string `json:"custom_salts,omitempty"`   // Advanced: custom WP salts
+	ExtraEnv          map[string]string `json:"extra_env,omitempty"`      // Advanced: extra env vars
+	SkipCaddyfile     *bool             `json:"skip_caddyfile,omitempty"` // Advanced: skip Caddyfile
+}
+
+func parseInstanceCreateJSON(input string) (*InstanceCreateJSON, error) {
+	var data InstanceCreateJSON
+	if err := json.Unmarshal([]byte(input), &data); err != nil {
+		return nil, err
+	}
+	return &data, nil
+}
+
+func loadInstanceCreateJSONFromFile(path string) (*InstanceCreateJSON, error) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	return parseInstanceCreateJSON(string(b))
+}
+
+// (Removed duplicate flag registrations; already handled in init())
+
+func createInstanceWithJSON(data *InstanceCreateJSON) {
+	printSectionHeader("Create New WordPress Instance (from JSON)")
+
+	// --- Validate and sanitize inputs ---
+	instanceName, err := sanitizeInstanceName(data.InstanceName)
+	if err != nil {
+		printError("Invalid instance_name", err.Error())
+		os.Exit(1)
+	}
+	if data.Template == "" {
+		printError("Missing required field: template")
+		os.Exit(1)
+	}
+	parentDir, err := sanitizeParentDirectory(data.ParentDirectory)
+	if err != nil {
+		printError("Invalid parent_directory", err.Error())
+		os.Exit(1)
+	}
+	fullInstanceName := filepath.Join(parentDir, "www-"+instanceName+"-wordpress")
+
+	// Guard: Prevent overwrite unless explicitly allowed
+	if !data.Overwrite {
+		if _, err := os.Stat(fullInstanceName); err == nil {
+			printError("Instance directory already exists", fullInstanceName)
+			if jsonOutput {
+				output := map[string]interface{}{
+					"status":   "error",
+					"error":    "instance_exists",
+					"location": fullInstanceName,
+				}
+				b, _ := json.MarshalIndent(output, "", "  ")
+				fmt.Println(string(b))
+			}
+			return
+		}
+	}
+
+	// --- Sane defaults for all fields ---
+	wpUser := sanitizeString(&data.WPUser, instanceName+"_user")
+	wpPassword := sanitizeString(&data.WPPassword, generateRandomStringSafe(16))
+	wpDBName := sanitizeString(&data.WPDBName, instanceName+"_db")
+	mysqlRootPassword := sanitizeString(&data.MySQLRootPassword, generateRandomStringSafe(16))
+	mailpitSMTPPort := sanitizeInt(&data.MailpitSMTPPort, 1025)
+	mailpitWebPort := sanitizeInt(&data.MailpitWebPort, 8025)
+	adminerWebPort := sanitizeInt(&data.AdminerWebPort, 8081)
+	caddyEnabled := sanitizeBool(data.CaddyEnabled, false)
+	caddyHTTPPort := sanitizeInt(&data.CaddyHTTPPort, 80)
+	caddyHTTPSPort := sanitizeInt(&data.CaddyHTTPSPort, 443)
+	devDomainSuffix := sanitizeString(&data.DevDomainSuffix, ".example.local")
+	wordpressVersion := sanitizeString(&data.WordPressVersion, "latest")
+	skipCaddyfile := sanitizeBool(data.SkipCaddyfile, false)
+	//customSalts := sanitizeCustomSalts(data.CustomSalts)
+	// If skipCaddyfile is true, do not generate a Caddyfile later
+	//extraEnv := sanitizeExtraEnv(data.ExtraEnv)
+
+	// Ensure the instance directory exists before copying files
+	if err := os.MkdirAll(fullInstanceName, 0755); err != nil {
+		printError("Failed to create instance directory", err.Error())
+		return
+	}
+
+	// Copy template files
+	templateRoot := filepath.Join("cmd/wp-manager/templates", data.Template)
+	errCopy := fs.WalkDir(os.DirFS(templateRoot), ".", func(pathInTemplate string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return fmt.Errorf("walk err at %s: %w", pathInTemplate, err)
+		}
+		relativePath := pathInTemplate
+		if relativePath == "." {
+			return nil
+		}
+		targetPath := filepath.Join(fullInstanceName, relativePath)
+		if d.IsDir() {
+			return os.MkdirAll(targetPath, 0755)
+		}
+		srcFile, errRead := os.ReadFile(filepath.Join(templateRoot, pathInTemplate))
+		if errRead != nil {
+			return fmt.Errorf("read template %s: %w", pathInTemplate, errRead)
+		}
+		perm := fs.FileMode(0644)
+		if d.Name() == "manage" || d.Name() == "manage.exe" {
+			perm = 0755
+		}
+		return os.WriteFile(targetPath, srcFile, perm)
+	})
+	if errCopy != nil {
+		printError("Template Copy Failed", errCopy.Error())
+		os.RemoveAll(fullInstanceName)
+		return
+	}
+	printSuccess("Template Files Copied", fmt.Sprintf("Copied files to %s", fullInstanceName))
+
+	// Prepare .env
+	envFilePath := filepath.Join(fullInstanceName, ".env")
+	envTemplatePathInInstance := filepath.Join(fullInstanceName, "env-template")
+	altEnvTemplatePathInInstance := filepath.Join(fullInstanceName, ".env-template")
+	if _, err := os.Stat(envTemplatePathInInstance); os.IsNotExist(err) {
+		if _, errAlt := os.Stat(altEnvTemplatePathInInstance); os.IsNotExist(errAlt) {
+			printError("'env-template' Missing", fmt.Sprintf("Neither %s nor %s found after copy.", envTemplatePathInInstance, altEnvTemplatePathInInstance))
+			os.RemoveAll(fullInstanceName)
+			return
+		} else {
+			// Use .env-template
+			if err := os.Rename(altEnvTemplatePathInInstance, envFilePath); err != nil {
+				printError("Failed to Prepare .env", fmt.Sprintf("Rename %s failed: %v", altEnvTemplatePathInInstance, err))
+				os.RemoveAll(fullInstanceName)
+				return
+			}
+		}
+	} else {
+		// Use env-template
+		if err := os.Rename(envTemplatePathInInstance, envFilePath); err != nil {
+			printError("Failed to Prepare .env", fmt.Sprintf("Rename %s failed: %v", envTemplatePathInInstance, err))
+			os.RemoveAll(fullInstanceName)
+			return
+		}
+	}
+	envContent, err := os.ReadFile(envFilePath)
+	if err != nil {
+		printError("Failed to Read .env", fmt.Sprintf("Read %s failed: %v", envFilePath, err))
+		os.RemoveAll(fullInstanceName)
+		return
+	}
+
+	// Fix: use local variables instead of data.WordPressPort and data.ProductionURL
+	wordpressPort := 0
+	replacements := map[string]string{
+		"WORDPRESS_CONTAINER_NAME": "wp-" + instanceName,
+		"WORDPRESS_PORT":           strconv.Itoa(mailpitWebPort), // Use correct port variable as needed
+		"WORDPRESS_URL":            fmt.Sprintf("http://0.0.0.0:%d", mailpitWebPort),
+		"PRODUCTION_URL":           fmt.Sprintf("http://0.0.0.0:%d", mailpitWebPort),
+		"WORDPRESS_DB_USER":        wpUser,
+		"WORDPRESS_DB_PASSWORD":    wpPassword,
+		"WORDPRESS_DB_NAME":        wpDBName,
+		"WORDPRESS_DB_HOST":        "db",
+		"MYSQL_USER":               wpUser,
+		"MYSQL_PASSWORD":           wpPassword,
+		"MYSQL_DATABASE":           wpDBName,
+		"MYSQL_ROOT_PASSWORD":      mysqlRootPassword,
+		"MAILPIT_PORT_SMTP":        strconv.Itoa(mailpitSMTPPort),
+		"MAILPIT_PORT_WEB":         strconv.Itoa(mailpitWebPort),
+		"ADMINER_PORT":             strconv.Itoa(adminerWebPort),
+		"CADDY_HTTP_PORT":          strconv.Itoa(caddyHTTPPort),
+		"CADDY_HTTPS_PORT":         strconv.Itoa(caddyHTTPSPort),
+		"WORDPRESS_VERSION":        wordpressVersion,
+	}
+	newEnvContentStr := string(envContent)
+	for key, value := range replacements {
+		re := regexp.MustCompile(fmt.Sprintf(`(?m)^%s=.*$`, regexp.QuoteMeta(key)))
+		placeholderRe := regexp.MustCompile(fmt.Sprintf(`(?m)^%s=$`, regexp.QuoteMeta(key)))
+		if re.MatchString(newEnvContentStr) {
+			newEnvContentStr = re.ReplaceAllString(newEnvContentStr, fmt.Sprintf("%s=%s", key, value))
+		} else if placeholderRe.MatchString(newEnvContentStr) {
+			newEnvContentStr = placeholderRe.ReplaceAllString(newEnvContentStr, fmt.Sprintf("%s=%s", key, value))
+		}
+	}
+	if err := os.WriteFile(envFilePath, []byte(newEnvContentStr), 0644); err != nil {
+		printError("Failed to Write .env", fmt.Sprintf("Update .env failed: %v", err))
+		os.RemoveAll(fullInstanceName)
+		return
+	}
+	printSuccess(".env File Configured")
+
+	// Generate Caddyfile if enabled
+	if !skipCaddyfile && caddyEnabled {
+		// Fix: use local variables instead of data.WordPressPort
+		caddyData := InstanceCaddyConfigData{
+			InstanceName:     filepath.Base(fullInstanceName),
+			DevHostName:      data.InstanceName + devDomainSuffix,
+			WordPressPort:    wordpressPort,
+			CaddyHTTPPort:    caddyHTTPPort,
+			InstanceNameBase: data.InstanceName,
+			DevDomainSuffix:  devDomainSuffix,
+		}
+		caddyTemplatePathInEmbedFS := "templates/docker-default-wordpress/config/Caddyfile.template"
+		templateContent, err := defaultWordpressTemplate.ReadFile(caddyTemplatePathInEmbedFS)
+		if err == nil {
+			tmpl, err := template.New("instanceCaddyfile").Parse(string(templateContent))
+			if err == nil {
+				instanceConfigDir := filepath.Join(fullInstanceName, "config")
+				if err := os.MkdirAll(instanceConfigDir, 0755); err == nil {
+					caddyFileOutputPath := filepath.Join(instanceConfigDir, "Caddyfile")
+					file, err := os.Create(caddyFileOutputPath)
+					if err == nil {
+						defer file.Close()
+						_ = tmpl.Execute(file, caddyData)
+						printSuccess("Instance-specific Caddyfile generated:", caddyFileOutputPath)
+					}
+				}
+			}
+		}
+	}
+
+	// Register instance meta
+	localMeta := InstanceMeta{
+		Directory:        fullInstanceName,
+		CreationDate:     time.Now().Format("2006-01-02 15:04:05"),
+		WordPressVersion: wordpressVersion,
+		DBVersion:        "", // Could be extended
+		WordPressPort:    wordpressPort,
+		Status:           "Stopped",
+	}
+	_ = writeInstanceMeta(fullInstanceName, &localMeta)
+
+	currentManagerMeta, errReadMeta := readManagerMeta()
+	if errReadMeta == nil {
+		instanceKey := filepath.Base(fullInstanceName)
+		currentManagerMeta[instanceKey] = localMeta
+		_ = writeManagerMeta(currentManagerMeta)
+	}
+
+	// Fix: use local variables instead of data.WordPressPort
+	successDetails := []string{
+		fmt.Sprintf("Name: %s", commandStyle.Render(data.InstanceName)),
+		fmt.Sprintf("Directory: %s", commandStyle.Render(fullInstanceName)),
+		fmt.Sprintf("WordPress Port (on host): %d", wordpressPort),
+		fmt.Sprintf("Suggested Dev Hostname: %s (Add to hosts file: 127.0.0.1 %s)", commandStyle.Render(data.InstanceName+devDomainSuffix), data.InstanceName+devDomainSuffix),
+		fmt.Sprintf("Mailpit Web UI: http://0.0.0.0:%d (SMTP on port %d)", mailpitWebPort, mailpitSMTPPort),
+		fmt.Sprintf("Adminer Web UI: http://0.0.0.0:%d", adminerWebPort),
+		"",
+		lipgloss.NewStyle().Foreground(lipgloss.Color("14")).Render("Next steps:"),
+		fmt.Sprintf("  cd %s", commandStyle.Render(fullInstanceName)),
+		fmt.Sprintf("  Run: %s", commandStyle.Render("./manage start")),
+		fmt.Sprintf("  Access via browser: %s (if hosts/Caddy configured) or http://0.0.0.0:%d", commandStyle.Render(data.InstanceName+devDomainSuffix), wordpressPort),
+	}
+	if !caddyEnabled {
+		successDetails = append(successDetails, "", lipgloss.NewStyle().Foreground(lipgloss.Color("11")).Render("Caddy was not enabled. To start Caddy manually (if ports become free):"))
+		successDetails = append(successDetails, "  docker compose up -d caddy")
+		successDetails = append(successDetails, "  See docs/caddy.md for more info on manual reverse proxy setup.")
+	}
+	printSuccess("🎉 Instance Created Successfully!", successDetails...)
+
+	if jsonOutput {
+		// Fix: use local variables instead of data.WordPressPort
+		output := map[string]interface{}{
+			"status":            "success",
+			"name":              data.InstanceName,
+			"directory":         fullInstanceName,
+			"wordpress_port":    wordpressPort,
+			"dev_hostname":      data.InstanceName + devDomainSuffix,
+			"mailpit_web_port":  mailpitWebPort,
+			"mailpit_smtp_port": mailpitSMTPPort,
+			"adminer_web_port":  adminerWebPort,
+			"caddy_enabled":     caddyEnabled,
+			"caddy_http_port":   caddyHTTPPort,
+			"caddy_https_port":  caddyHTTPSPort,
+			"wordpress_version": wordpressVersion,
+			"created":           time.Now().Format("2006-01-02 15:04:05"),
+			"location":          fullInstanceName,
+			"meta": map[string]interface{}{
+				"status": "Stopped",
+			},
+		}
+		b, _ := json.MarshalIndent(output, "", "  ")
+		fmt.Println(string(b))
+		return
+	}
+}
+
+// Add: Delete via JSON
+func deleteInstanceWithJSON(data map[string]interface{}) {
+	name, ok := data["instance_name"].(string)
+	if !ok || name == "" {
+		printError("Missing required field: instance_name for delete")
+		os.Exit(1)
+	}
+	finalInstanceParentDir := "."
+	fullInstanceName := filepath.Join(finalInstanceParentDir, "www-"+name+"-wordpress")
+	if _, err := os.Stat(fullInstanceName); os.IsNotExist(err) {
+		if jsonOutput {
+			output := map[string]interface{}{
+				"status":   "error",
+				"error":    "not_found",
+				"location": fullInstanceName,
+			}
+			b, _ := json.MarshalIndent(output, "", "  ")
+			fmt.Println(string(b))
+		}
+		printError("Instance directory not found", fullInstanceName)
+		return
+	}
+	if err := os.RemoveAll(fullInstanceName); err != nil {
+		if jsonOutput {
+			output := map[string]interface{}{
+				"status":   "error",
+				"error":    err.Error(),
+				"location": fullInstanceName,
+			}
+			b, _ := json.MarshalIndent(output, "", "  ")
+			fmt.Println(string(b))
+		}
+		printError("Failed to delete instance directory", err.Error())
+		return
+	}
+	if jsonOutput {
+		output := map[string]interface{}{
+			"status":   "deleted",
+			"name":     name,
+			"location": fullInstanceName,
+		}
+		b, _ := json.MarshalIndent(output, "", "  ")
+		fmt.Println(string(b))
+		return
+	}
+	printSuccess("Instance deleted", fullInstanceName)
 }

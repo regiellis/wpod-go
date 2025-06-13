@@ -121,12 +121,12 @@ func findTargetBinaryInDist(offerToBuild bool) (string, error) {
 						Negative("No, I'll build it manually or download it").
 						Value(&confirmBuild),
 				),
-			).WithTheme(theme) // Assuming 'theme' is your huh.Theme
+			).WithTheme(theme)
 
 			err := form.Run()
 			if err != nil {
 				printInfo("Build cancelled by user.")
-				return "", fmt.Errorf("%s Build cancelled", errMsg) // Return original error with context
+				return "", fmt.Errorf("%s Build cancelled", errMsg)
 			}
 
 			if confirmBuild {
@@ -134,7 +134,7 @@ func findTargetBinaryInDist(offerToBuild bool) (string, error) {
 				cmd := exec.Command("make", "build-current")
 				cmd.Stdout = os.Stdout
 				cmd.Stderr = os.Stderr
-				// cmd.Dir = "." // Assuming 'setup' is run from project root where Makefile is
+				// cmd.Dir = "."
 				if err := cmd.Run(); err != nil {
 					printError(fmt.Sprintf("Build attempt failed: %v", err))
 					printInfo(fmt.Sprintf("Please ensure Go (%s) and Make are installed and you are in the project root.", goPath))
@@ -152,11 +152,10 @@ func findTargetBinaryInDist(offerToBuild bool) (string, error) {
 				return "", fmt.Errorf("%s Build declined", errMsg)
 			}
 		} else {
-			// Go not available, just return the original error
 			return "", fmt.Errorf("%s Go compiler not found, cannot offer to build", errMsg)
 		}
 	}
-	return "", fmt.Errorf(errMsg + " Please build it first.") // If not offering to build or Go not found
+	return "", fmt.Errorf("%s", errMsg+" Please build it first.")
 }
 
 func getCurrentOSArchSuffix() string {
@@ -215,7 +214,7 @@ func installDevUnix(binaryPathInDist string) {
 		printError(fmt.Sprintf("Failed to create symlink: %v", err))
 		return
 	}
-	_ = os.Chmod(binaryPathInDist, 0755) // Ensure target is executable
+	_ = os.Chmod(binaryPathInDist, 0755)
 
 	printSuccess(fmt.Sprintf("%s dev symlink created at %s", appName, linkName))
 	printInfo(fmt.Sprintf("You can now run '%s' from the project root.", linkName))
@@ -297,7 +296,7 @@ func main() {
 
 	var mode string
 	var installDirArg string
-	offerToBuildBinary := false // Default to not offering, enable based on command and OS
+	offerToBuildBinary := false
 
 	if len(os.Args) < 2 {
 		usage()
@@ -305,35 +304,24 @@ func main() {
 	}
 	mode = strings.ToLower(os.Args[1])
 
-	// Parse installDirArg only if the command is 'install' or 'uninstall'
-	// and there are enough arguments.
 	if (mode == "install" || mode == "uninstall") && len(os.Args) > 2 {
 		installDirArg = os.Args[2]
 	}
 
-	// Determine if the action requires the binary and thus if we should offer to build it.
-	if osName != "windows" { // On Windows, most actions are instructional, so we don't *need* the binary for `setup` to proceed.
+	if osName != "windows" {
 		if mode == "dev" || mode == "install" {
 			offerToBuildBinary = true
 		}
 	}
 
-	// findTargetBinaryInDist will be called with offerToBuildBinary.
-	// If it's true and binary is not found, it will interact with the user.
-	// If it's false, it will just return an error if not found.
 	binaryPathInDist, errBinary := findTargetBinaryInDist(offerToBuildBinary)
-	// At this point, if offerToBuildBinary was true, errBinary will be non-nil
-	// if the user declined, the build failed, or Go wasn't present.
-	// If offerToBuildBinary was false, errBinary will be non-nil if the binary simply wasn't found.
 
 	switch mode {
 	case "install":
 		printHeader("System-wide Installation")
 		if osName == "windows" {
-			// For Windows, binaryPathInDist might be empty if not found, but instructions are still useful.
 			printWindowsInstallInstructions(binaryPathInDist)
 		} else {
-			// For Unix, if errBinary is not nil, it means either not found, or build was offered and failed/declined.
 			if errBinary != nil {
 				printError(errBinary.Error())
 				printInfo("Installation aborted.")
@@ -346,7 +334,7 @@ func main() {
 		if osName == "windows" {
 			printInfo(fmt.Sprintf("For Windows uninstallation, please refer to manual steps (run '%s setup install' for details).", filepath.Base(os.Args[0])))
 		} else {
-			uninstallAppUnix(installDirArg) // Uninstall doesn't strictly need the binary in dist/
+			uninstallAppUnix(installDirArg)
 		}
 	case "dev":
 		printHeader("Developer Setup")
@@ -361,7 +349,6 @@ func main() {
 			printInfo(fmt.Sprintf("2. Run directly: .\\%s\\%s%s", distDir, appName, getCurrentOSArchSuffix()))
 			printInfo("3. Or, add project's 'dist' directory to your PowerShell PATH.")
 		} else {
-			// For Unix, if errBinary is not nil, it means either not found, or build was offered and failed/declined.
 			if errBinary != nil {
 				printError(errBinary.Error())
 				printInfo("Developer setup aborted.")
@@ -393,7 +380,6 @@ func usage() {
 	os.Exit(1)
 }
 
-// Dummy/unused helper functions from previous install.sh, can be removed or used later
 func promptYN(prompt string, defaultValue bool) bool {
 	reader := bufio.NewReader(os.Stdin)
 	defaultHint := "Y/n"
