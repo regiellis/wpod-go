@@ -42,7 +42,7 @@ Thumbs.db
 # coverage.html
 
 # --- Distribution directory for compiled binaries (from Makefile) ---
-/dist/
+#/dist/
 
 # --- Custom ---
 .wpod-instances.json

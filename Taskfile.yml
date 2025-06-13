@@ -47,21 +47,27 @@ tasks:
     cmds:
       - echo "Building 'manage' for linux-amd64..."
       - CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o ./cmd/wp-manager/templates/docker-default-wordpress/manage ./cmd/manage
-      - "echo \"Built: ./cmd/wp-manager/templates/docker-default-wordpress/manage (for linux-amd64)\""
+      - CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o ./cmd/wp-manager/templates/docker-headless-wordpress/manage ./cmd/manage
+      - CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o ./cmd/wp-manager/templates/docker-official-wordpress/manage ./cmd/manage
+      - "echo \"Built: manage for linux-amd64 in all template directories\""
 
   manage-windows:
     desc: Build 'manage' tool for windows-amd64
     cmds:
       - echo "Building 'manage' for windows-amd64..."
       - CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o ./cmd/wp-manager/templates/docker-default-wordpress/manage.exe ./cmd/manage
-      - "echo \"Built: ./cmd/wp-manager/templates/docker-default-wordpress/manage.exe (for windows-amd64)"
+      - CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o ./cmd/wp-manager/templates/docker-headless-wordpress/manage.exe ./cmd/manage
+      - CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o ./cmd/wp-manager/templates/docker-official-wordpress/manage.exe ./cmd/manage
+      - "echo \"Built: manage.exe for windows-amd64 in all template directories\""
 
   manage-darwin:
     desc: Build 'manage' tool for darwin-amd64
     cmds:
       - echo "Building 'manage' for darwin-amd64..."
       - CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -o ./cmd/wp-manager/templates/docker-default-wordpress/manage ./cmd/manage
-      - "echo \"Built: ./cmd/wp-manager/templates/docker-default-wordpress/manage (for darwin-amd64)\""
+      - CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -o ./cmd/wp-manager/templates/docker-headless-wordpress/manage ./cmd/manage
+      - CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -o ./cmd/wp-manager/templates/docker-official-wordpress/manage ./cmd/manage
+      - "echo \"Built: manage for darwin-amd64 in all template directories\""
 
   wpod-linux:
     desc: Build 'wpod' for linux-amd64
@@ -69,7 +75,7 @@ tasks:
     cmds:
       - echo "Building 'wpod' for linux-amd64..."
       - CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o ./dist/wpod-linux-amd64 ./cmd/wp-manager
-      - "echo \"Built: ./dist/wpod-linux-amd64"
+      - "echo \"Built: ./dist/wpod-linux-amd64\""
 
   wpod-windows:
     desc: Build 'wpod' for windows-amd64
@@ -77,7 +83,7 @@ tasks:
     cmds:
       - echo "Building 'wpod' for windows-amd64..."
       - CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o ./dist/wpod-windows-amd64.exe ./cmd/wp-manager
-      - "echo \"Built: ./dist/wpod-windows-amd64.exe"
+      - "echo \"Built: ./dist/wpod-windows-amd64.exe\""
 
   wpod-darwin:
     desc: Build 'wpod' for darwin-amd64
@@ -85,7 +91,7 @@ tasks:
     cmds:
       - echo "Building 'wpod' for darwin-amd64..."
       - CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -o ./dist/wpod-darwin-amd64 ./cmd/wp-manager
-      - "echo \"Built: ./dist/wpod-darwin-amd64"
+      - "echo \"Built: ./dist/wpod-darwin-amd64\""
 
   clean:
     desc: Remove all build artifacts
