@@ -1,5 +1,4 @@
-
-name: Release with GoReleaser
+name: Build and Release Binaries
 
 on:
   push:
@@ -10,7 +9,8 @@ permissions:
   contents: write
 
 jobs:
-  release:
+  build:
+    name: Build and Release with GoReleaser
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -19,9 +19,12 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.21'
+          go-version: '1.24'
 
-      - name: Set up GoReleaser
+      - name: Set up QEMU (for cross-compilation)
+        uses: docker/setup-qemu-action@v3
+
+      - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v5
         with:
           version: latest
