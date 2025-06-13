@@ -19,7 +19,7 @@
 >
 > I believe in leveraging all available tools to learn and build effectively.
 >
-> To those who may have strong opinions against the use of AI: I respect your perspective. This tool is offered as is; if its development process doesn't align with your views, feel free to explore other solutions. Peace. ✌️
+> To those who may have strong opinions against the use of AI: I respect your perspective. > This tool is offered as is; if its development process doesn't align with your views, > feel free to explore other solutions. Peace. ✌️
 
 ---
 
@@ -87,7 +87,7 @@ Local WordPress development can be a pain. Different PHP versions, conflicting d
 > Ensure these prerequisites are met before attempting to install or use WPOD.
 
 - 🐳 **Docker & Docker Compose:** Essential! WPOD orchestrates Docker containers. [Install Docker](https://docs.docker.com/get-docker/).
-- ![Go](https://raw.githubusercontent.com/devicons/devicon/master/icons/go/go-original.svg) **Go (Golang):**
+- [Go](https://golang.org/dl/)
   - **For running `wpod` (pre-compiled):** No Go installation needed by end-users.
   - **For building from source / development:** Go 1.21+ recommended.
 - **Make:** Required if building from source using the `Makefile`. [Install GNU Make](https://www.gnu.org/software/make/).
